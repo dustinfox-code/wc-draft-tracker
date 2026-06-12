@@ -249,6 +249,7 @@ Object.assign(NAME_TO_CODE, {
 const DW_GROUP_CHARTS = ["1oPAd","EodNy","ArtIj"]; // groups A–D, E–H, I–L
 const DW_KO_CHART = "JRO90";
 let SILVER = {src:"pre", asOf:null, teams:null};
+let silverChecked = false; // first fetch attempt finished (suppresses a false stale-flash on load)
 
 function parseCSV(text){
   const rows=[]; let row=[], field="", inQ=false;
@@ -303,6 +304,7 @@ async function loadSilver(){
       if(c && c.teams) SILVER = {...c, src:"cache"};
     }catch(e2){}
   }
+  silverChecked = true;
   render();
 }
 
@@ -460,9 +462,13 @@ function render(){
   const T = computeScores();
   const ms = DATA ? DATA.matches : [];
 
-  const silverNote = SILVER.src==="live" ? `Silver odds upd ${new Date(SILVER.asOf).toLocaleDateString([],{month:"short",day:"numeric"})}`
-                   : SILVER.src==="cache" ? "Silver odds: cached" : "Silver odds: pre-tournament";
-  document.getElementById("updated").textContent = DATA ? `results: ${LOADED_FROM} · ${silverNote} · rendered ${fmtTime(now)}` : "loading…";
+  const ageDays = SILVER.asOf ? (now - new Date(SILVER.asOf))/86400000 : null;
+  const silverNote = SILVER.teams
+    ? `Silver odds upd ${new Date(SILVER.asOf).toLocaleDateString([],{month:"short",day:"numeric"})}${SILVER.src==="cache"?" (cached copy)":""}`
+    : "Silver odds: pre-tournament";
+  const stale = (silverChecked && !SILVER.teams) || (ageDays!=null && ageDays>3);
+  const warn = stale ? ` <span class="pill" style="background:#3a3322;color:var(--gold)">⚠ odds stale${ageDays>3?` — ${Math.floor(ageDays)}d old`:""}</span>` : "";
+  document.getElementById("updated").innerHTML = DATA ? `results: ${LOADED_FROM} · ${silverNote}${warn} · rendered ${fmtTime(now)}` : "loading…";
 
   // --- hero: next matches for the followed selection
   const involves = (m,set)=>{const c1=tcode(m.team1),c2=tcode(m.team2);return (c1&&set.has(c1))||(c2&&set.has(c2));};
