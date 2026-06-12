@@ -105,7 +105,8 @@
       <div class="panel">
         <h2>League standings <span class="small" style="margin:0">click a manager for breakdown</span></h2>
         <div id="standings"></div>
-        <p class="small">Scoring: group win 3 · draw 1 · advance to KO +4 · each KO win +5 · winning the final +10 (5 win + 5 champion bonus). Third-place match is not scored. "Pre EV" is the pre-tournament Silver Bulletin expectation, for bragging-rights reference only.</p>
+        <p class="small">Scoring: group win 3 · draw 1 · advance to KO +4 · each KO win +5 · winning the final +10 (5 win + 5 champion bonus). Third-place match is not scored.
+        "Proj" = expected final total from Silver Bulletin's odds, which he republishes nightly after each matchday (banked points are included in his updated numbers). "vs draft" compares that to the pre-tournament expectation — whose draft is aging well. If the odds feed is unreachable the page falls back to the last fetched copy, then to pre-tournament numbers (see the header note for which is in use).</p>
       </div>
       <div class="panel">
         <h2><span>Matches</span>
@@ -235,6 +236,78 @@ Object.assign(NAME_TO_CODE, {
   "Korea Republic":"KOR","South Korea":"KOR",
   "Congo DR":"COD","DR Congo":"COD",
 });
+
+// ============================================================================
+// Silver Bulletin live odds
+// His article is paywalled, but the Datawrapper charts under it serve their
+// data from a public CDN and he republishes them nightly after each matchday.
+// Group charts give updated expected W/D (banked + remaining); the KO chart
+// gives updated round-reach probabilities — exactly the inputs of the draft
+// EV formula, so "live EV" is the same arithmetic on fresher numbers.
+// Fallback chain: live fetch → last good fetch (localStorage) → pre-tournament.
+// ============================================================================
+const DW_GROUP_CHARTS = ["1oPAd","EodNy","ArtIj"]; // groups A–D, E–H, I–L
+const DW_KO_CHART = "JRO90";
+let SILVER = {src:"pre", asOf:null, teams:null};
+
+function parseCSV(text){
+  const rows=[]; let row=[], field="", inQ=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(inQ){ if(ch==='"'){ if(text[i+1]==='"'){field+='"';i++;} else inQ=false; } else field+=ch; }
+    else if(ch==='"') inQ=true;
+    else if(ch===","){ row.push(field); field=""; }
+    else if(ch==="\n"){ row.push(field); rows.push(row); row=[]; field=""; }
+    else if(ch!=="\r") field+=ch;
+  }
+  if(field!==""||row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r=>r.length>1);
+}
+
+async function dwFetch(id){
+  // /<id>/dataset.csv doesn't exist and /<id>/ redirects via meta-refresh,
+  // so resolve the published version through embed.json first.
+  const meta = await (await fetch(`https://datawrapper.dwcdn.net/${id}/embed.json?t=${Math.floor(Date.now()/600000)}`, {cache:"no-store"})).json();
+  const v = meta.chart.publicVersion;
+  const csv = await (await fetch(`https://datawrapper.dwcdn.net/${id}/${v}/dataset.csv`)).text();
+  return {rows:parseCSV(csv), modified:meta.chart.lastModifiedAt};
+}
+
+async function loadSilver(){
+  try{
+    const [g1,g2,g3,ko] = await Promise.all([...DW_GROUP_CHARTS, DW_KO_CHART].map(dwFetch));
+    const teams = {};
+    for(const part of [g1,g2,g3]){
+      const head=part.rows[0], iC=head.indexOf("fifa_code"), iW=head.indexOf("W"), iD=head.indexOf("D");
+      for(const r of part.rows.slice(1)){
+        const c=r[iC];
+        if(BY_CODE[c]) teams[c]={gExp: 3*+r[iW] + +r[iD]};
+      }
+    }
+    const head=ko.rows[0];
+    const [iC,i32,i16,i8,iS,iF,iCh] = ["fifa_code","_r32","_r16","_r8","_semi","_final","_champ"].map(k=>head.indexOf(k));
+    for(const r of ko.rows.slice(1)){
+      const c=r[iC], t=teams[c];
+      if(!t) continue;
+      const p=i=>+r[i]/100; // chart values are percentages
+      t.r32=p(i32); t.kow=p(i16)+p(i8)+p(iS)+p(iF)+p(iCh); t.champ=p(iCh);
+      t.ev = t.gExp + 4*t.r32 + 5*t.kow + 5*t.champ;
+    }
+    const complete = Object.fromEntries(Object.entries(teams).filter(([,t])=>t.ev!=null && isFinite(t.ev)));
+    if(Object.keys(complete).length < 40) throw new Error("incomplete Silver data: "+Object.keys(complete).length);
+    SILVER = {src:"live", asOf:ko.modified, teams:complete};
+    try{ localStorage.setItem("wcSilverCache", JSON.stringify(SILVER)); }catch(e){}
+  }catch(e){
+    try{
+      const c = JSON.parse(localStorage.getItem("wcSilverCache")||"null");
+      if(c && c.teams) SILVER = {...c, src:"cache"};
+    }catch(e2){}
+  }
+  render();
+}
+
+// Live expected final total for a team; pre-tournament EV when no fresh data
+const evFor = code => (SILVER.teams && SILVER.teams[code]) ? SILVER.teams[code].ev : BY_CODE[code].preEV;
 
 // ============================================================================
 // Data load
@@ -387,7 +460,9 @@ function render(){
   const T = computeScores();
   const ms = DATA ? DATA.matches : [];
 
-  document.getElementById("updated").textContent = DATA ? `data: ${LOADED_FROM} · rendered ${fmtTime(now)}` : "loading…";
+  const silverNote = SILVER.src==="live" ? `Silver odds upd ${new Date(SILVER.asOf).toLocaleDateString([],{month:"short",day:"numeric"})}`
+                   : SILVER.src==="cache" ? "Silver odds: cached" : "Silver odds: pre-tournament";
+  document.getElementById("updated").textContent = DATA ? `results: ${LOADED_FROM} · ${silverNote} · rendered ${fmtTime(now)}` : "loading…";
 
   // --- hero: next matches for the followed selection
   const involves = (m,set)=>{const c1=tcode(m.team1),c2=tcode(m.team2);return (c1&&set.has(c1))||(c2&&set.has(c2));};
@@ -426,26 +501,32 @@ function render(){
   // --- topbar
   const totals = MANAGERS.map(mgr=>{
     const codes=ROSTERS[mgr.name]||[];
-    return {mgr, pts:codes.reduce((s,c)=>s+T[c].pts,0), preEV:codes.reduce((s,c)=>s+BY_CODE[c].preEV,0)};
-  }).sort((a,b)=>b.pts-a.pts || b.preEV-a.preEV);
+    return {mgr,
+      pts:  codes.reduce((s,c)=>s+T[c].pts,0),
+      preEV:codes.reduce((s,c)=>s+BY_CODE[c].preEV,0),
+      proj: codes.reduce((s,c)=>s+evFor(c),0)};
+  }).sort((a,b)=>b.pts-a.pts || b.proj-a.proj);
   const myIdx = totals.findIndex(x=>x.mgr.name===prefs.manager);
+  const projLeader = [...totals].sort((a,b)=>b.proj-a.proj)[0];
   const todays = ms.filter(m=>{const k=kickoff(m); return k && k.toDateString()===now.toDateString();});
   document.getElementById("topbar").innerHTML = `
-    <div class="stat you"><div class="label">${MGR[prefs.manager].short}'s points</div><div class="value">${totals[myIdx].pts} <span style="font-size:.75rem;color:var(--muted)">(#${myIdx+1} of 8)</span></div></div>
+    <div class="stat you"><div class="label">${MGR[prefs.manager].short}'s points</div><div class="value">${totals[myIdx].pts} <span style="font-size:.75rem;color:var(--muted)">(#${myIdx+1}) · proj ${totals[myIdx].proj.toFixed(1)}</span></div></div>
     <div class="stat"><div class="label">Leader</div><div class="value">${totals[0].mgr.short} · ${totals[0].pts}</div></div>
+    <div class="stat"><div class="label">Projected winner</div><div class="value">${projLeader.mgr.short} · ${projLeader.proj.toFixed(1)}</div></div>
     <div class="stat"><div class="label">Games today</div><div class="value">${todays.length}</div></div>
     <div class="stat"><div class="label">Results in</div><div class="value">${ms.filter(m=>finalScore(m)).length} / 104</div></div>`;
 
   // --- standings
   document.getElementById("standings").innerHTML = totals.map((row,i)=>{
-    const codes=(ROSTERS[row.mgr.name]||[]).slice().sort((a,b)=>T[b].pts-T[a].pts || BY_CODE[b].preEV-BY_CODE[a].preEV);
+    const codes=(ROSTERS[row.mgr.name]||[]).slice().sort((a,b)=>T[b].pts-T[a].pts || evFor(b)-evFor(a));
     const isYou=row.mgr.name===prefs.manager, open=expanded.has(row.mgr.name);
+    const delta=row.proj-row.preEV;
     return `<div class="mgr-row ${isYou?"you-row":""} ${open?"open":""}" data-mgr="${row.mgr.name}">
-      <div class="top"><span>#${i+1} <span style="color:${row.mgr.color}">${isYou?"⭐ ":""}${row.mgr.name}</span></span><span class="pts">${row.pts} <span style="font-size:.7rem;color:var(--muted)">pre-EV ${row.preEV.toFixed(1)}</span></span></div>
+      <div class="top"><span>#${i+1} <span style="color:${row.mgr.color}">${isYou?"⭐ ":""}${row.mgr.name}</span></span><span class="pts">${row.pts} <span style="font-size:.7rem;color:var(--muted)">proj ${row.proj.toFixed(1)} <span style="color:${delta>=0?"var(--green)":"var(--red)"}">(${delta>=0?"+":""}${delta.toFixed(1)} vs draft)</span></span></span></div>
       <div class="teams">${codes.map(c=>`${BY_CODE[c].flag} ${c} ${T[c].pts}`).join(" · ")}</div>
       <div class="detail"><table>
-        <tr><th>Team</th><th>Grp pts</th><th>W-D-L</th><th>Adv</th><th>KO wins</th><th>Total</th></tr>
-        ${codes.map(c=>{const t=T[c];return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":"—"}</td><td>${t.koWins.length?t.koWins.map(r=>r==="Final"?"F(+10)":"+5").join(" "):"—"}</td><td><b>${t.pts}</b></td></tr>`;}).join("")}
+        <tr><th>Team</th><th>Grp pts</th><th>W-D-L</th><th>Adv</th><th>KO wins</th><th>Banked</th><th>Proj</th></tr>
+        ${codes.map(c=>{const t=T[c];return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":"—"}</td><td>${t.koWins.length?t.koWins.map(r=>r==="Final"?"F(+10)":"+5").join(" "):"—"}</td><td><b>${t.pts}</b></td><td style="color:var(--muted)">${evFor(c).toFixed(1)}</td></tr>`;}).join("")}
       </table></div>
     </div>`;
   }).join("");
@@ -517,11 +598,12 @@ document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click", ()=>{
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===b));
   render();
 }));
-document.getElementById("refreshBtn").addEventListener("click", loadData);
-document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) loadData(); });
-setInterval(loadData, 10*60000);  // re-fetch results every 10 min
-setInterval(render, 30000);       // tick the countdown every 30 s
-loadData();
+function refreshAll(){ loadData(); loadSilver(); }
+document.getElementById("refreshBtn").addEventListener("click", refreshAll);
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) refreshAll(); });
+setInterval(refreshAll, 10*60000); // re-fetch results + odds every 10 min
+setInterval(render, 30000);        // tick the countdown every 30 s
+refreshAll();
 </script>
 </body>
 </html>

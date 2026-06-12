@@ -12,6 +12,16 @@ Live results, league standings, and a "which game do I watch next" banner for an
   (no API key, auto-refreshes every 10 minutes), scores them under league rules,
   and renders standings, group tables, schedule, and a next-match countdown for
   whichever manager's teams (plus any extra teams) the viewer follows.
+
+  Standings also show a **live projected final total** per manager: Silver
+  Bulletin republishes his Datawrapper charts nightly after each matchday, and
+  their data is served from a public CDN (chart ids `1oPAd`/`EodNy`/`ArtIj`
+  for group expectations, `JRO90` for the knockout ladder). The page fetches
+  those CSVs at view time and runs them through the league scoring formula —
+  same arithmetic as the draft board's EV, fresher inputs. Fallback chain:
+  live fetch → last good fetch (localStorage) → pre-tournament numbers; the
+  header shows which is in use. If Silver replaces those charts with new ones
+  mid-tournament, update the ids in `DW_GROUP_CHARTS` / `DW_KO_CHART`.
 - `draft.html` — the original pre-tournament draft board / simulator
   (Silver Bulletin EVs, draft-night pick tracking). Preserved as-is.
 - `data/worldcup.json` — bundled snapshot of the feed, used as a fallback if
