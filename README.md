@@ -7,10 +7,17 @@ Live results, league standings, and a "which game do I watch next" banner for an
 
 ## What's here
 
-- `index.html` — the live tracker. Fetches results client-side from the
-  public-domain [openfootball worldcup.json feed](https://github.com/openfootball/worldcup.json)
-  (no API key, auto-refreshes every 10 minutes), scores them under league rules,
-  and renders standings, group tables, schedule, and a next-match countdown for
+- `index.html` — the live tracker. All client-side, no keys. Three data layers:
+  1. **Schedule/bracket + canonical results**: the fast-updating
+     [community mirror](https://github.com/upbound-web/worldcup-live.json) and
+     the [openfootball feed](https://github.com/openfootball/worldcup.json),
+     fetched in parallel — whichever has more completed results wins.
+  2. **ESPN scoreboard overlay**: fills in final scores the feeds don't have
+     yet (minutes after full time) and live in-game scores (polled every
+     2 minutes). Feeds win once they carry a score; ESPN covers the gap.
+  3. **Bundled snapshot** (`data/worldcup.json`) as last resort.
+
+  Renders standings, group tables, schedule, and a next-match countdown for
   whichever manager's teams (plus any extra teams) the viewer follows.
 
   Standings also show a **live projected final total** per manager: Silver

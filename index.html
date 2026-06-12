@@ -132,7 +132,7 @@
       <div class="panel">
         <h2>About</h2>
         <p class="small">
-          Results auto-load from the <a href="https://github.com/upbound-web/worldcup-live.json">fast-updating community mirror</a> (ESPN poller, ~5 min after full time) with the canonical <a href="https://github.com/openfootball/worldcup.json">openfootball feed</a> (hand-updated daily) as backup — whichever has more completed results is used; the header shows which. No manual entry needed. Page refreshes itself every 10 minutes.<br>
+          Scores come from ESPN's public scoreboard within minutes of full time (including live in-game scores), overlaid on the canonical schedule/bracket from the <a href="https://github.com/upbound-web/worldcup-live.json">community mirror</a> / <a href="https://github.com/openfootball/worldcup.json">openfootball feed</a> (whichever has more completed results — the header shows which). No manual entry needed. Live scores poll every 2 minutes, everything else every 10.<br>
           Draft happened 2026-06-10. The pre-tournament <a href="draft.html">draft board &amp; simulator</a> is preserved here.
         </p>
       </div>
@@ -229,7 +229,7 @@ const MGR = Object.fromEntries(MANAGERS.map(m=>[m.name,m]));
 const NAME_TO_CODE = Object.fromEntries(TEAMS.map(t=>[t.name,t.code]));
 Object.assign(NAME_TO_CODE, {
   "Czech Republic":"CZE","Czechia":"CZE",
-  "Bosnia & Herzegovina":"BIH","Bosnia and Herzegovina":"BIH",
+  "Bosnia & Herzegovina":"BIH","Bosnia and Herzegovina":"BIH","Bosnia-Herzegovina":"BIH",
   "USA":"USA","United States":"USA",
   "Türkiye":"TUR","Turkey":"TUR",
   "Côte d'Ivoire":"CIV","Ivory Coast":"CIV",
@@ -353,6 +353,62 @@ async function loadData(){
 }
 
 // ============================================================================
+// ESPN live-score overlay
+// ESPN's public scoreboard API (keyless, CORS-open) has scores within minutes
+// of full time and live in-progress scores. The GitHub feeds stay canonical
+// for schedule/bracket; ESPN only fills in scores they don't have yet, plus
+// a live score while a match is running. Quick poll (±1 day window) every
+// 2 min; full-tournament poll on the regular 10-min refresh.
+// ============================================================================
+const ESPN_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard";
+let ESPN_MAP = {}; // "CODE1-CODE2|YYYY-MM-DD"(UTC) → {codes, date, state, scores, pens, detail}
+
+async function loadESPN(full){
+  try{
+    const fmt = d => d.toISOString().slice(0,10).replace(/-/g,"");
+    const now = Date.now();
+    const range = full ? "20260611-20260720" : `${fmt(new Date(now-86400000))}-${fmt(new Date(now+86400000))}`;
+    const d = await (await fetch(`${ESPN_URL}?dates=${range}&limit=300`, {cache:"no-store"})).json();
+    for(const e of (d.events||[])){
+      const c = e.competitions && e.competitions[0]; if(!c) continue;
+      const ent = {date:new Date(e.date), state:c.status?.type?.state, detail:c.status?.type?.shortDetail||"", scores:{}, pens:{}, codes:[]};
+      let ok = true;
+      for(const x of (c.competitors||[])){
+        const code = NAME_TO_CODE[x.team && x.team.displayName];
+        if(!code){ ok=false; break; }
+        ent.codes.push(code);
+        ent.scores[code] = +x.score;
+        if(x.shootoutScore!=null) ent.pens[code] = +x.shootoutScore;
+      }
+      if(!ok || ent.codes.length!==2) continue;
+      ESPN_MAP[[...ent.codes].sort().join("-")+"|"+e.date.slice(0,10)] = ent;
+    }
+  }catch(e){ /* overlay is best-effort; feeds still render */ }
+  render();
+}
+
+// Fill ESPN data into the loaded schedule. Feeds win once they have a score
+// (they're canonical and carry corrections); ESPN covers the gap before that.
+function applyESPN(){
+  if(!DATA) return;
+  const evs = Object.values(ESPN_MAP);
+  if(!evs.length) return;
+  for(const m of DATA.matches){
+    const c1=tcode(m.team1), c2=tcode(m.team2);
+    if(!c1 || !c2) continue;
+    const k=kickoff(m); if(!k) continue;
+    const ev = evs.find(e=>e.codes.includes(c1) && e.codes.includes(c2) && Math.abs(e.date-k) < 36*3600000);
+    if(!ev) continue;
+    if(ev.state==="post" && !(m.score && m.score.ft) && isFinite(ev.scores[c1]) && isFinite(ev.scores[c2])){
+      m.score = {ft:[ev.scores[c1], ev.scores[c2]]};
+      if(ev.pens[c1]!=null) m.score.p = [ev.pens[c1], ev.pens[c2]];
+    }
+    if(ev.state==="in" && isFinite(ev.scores[c1])) m._live = {s:[ev.scores[c1], ev.scores[c2]], detail:ev.detail};
+    else delete m._live;
+  }
+}
+
+// ============================================================================
 // Match helpers
 // ============================================================================
 const KO_ROUNDS = {"Round of 32":5,"Round of 16":5,"Quarter-final":5,"Semi-final":5,"Final":10};
@@ -466,7 +522,7 @@ function matchRow(m, now, followed){
   const isF = (c1&&followed.has(c1))||(c2&&followed.has(c2));
   const nm = (c,raw) => c ? `${BY_CODE[c].flag} <span class="nm">${BY_CODE[c].name}</span>` : `<span class="nm" style="color:var(--muted)">${tname(raw)}</span>`;
   const mid = st==="done" ? `${fs[0]}–${fs[1]}<span class="note">${scoreNote(m)}</span>`
-            : st==="live" ? `<span class="pill live">LIVE</span>`
+            : st==="live" ? (m._live ? `${m._live.s[0]}–${m._live.s[1]}<span class="note" style="color:var(--red)">LIVE ${m._live.detail||""}</span>` : `<span class="pill live">LIVE</span>`)
             : st==="await" ? `<span class="note" style="font-size:.65rem;color:var(--muted)">awaiting<br>result</span>`
             : "vs";
   return `<div class="match-row ${isF?"followed":""}">
@@ -479,6 +535,7 @@ function matchRow(m, now, followed){
 
 function render(){
   const now = new Date();
+  applyESPN();
   const followed = followedCodes();
   const T = computeScores();
   const ms = DATA ? DATA.matches : [];
@@ -518,7 +575,7 @@ function render(){
     heroBody.innerHTML = `
       <div class="match">${live?'<span class="pill live">LIVE</span> ':""}${n(c1,m.team1)} vs ${n(c2,m.team2)}</div>
       <div class="meta">${m.group||m.round} · ${m.ground||""} · ${fmtDay(k)} ${fmtTime(k)} your time</div>
-      <div class="count">${live?"In progress":"Kickoff in "+countdownStr(k-now)}</div>
+      <div class="count">${live ? (m._live ? `In progress — ${m._live.s[0]}–${m._live.s[1]}${m._live.detail?` (${m._live.detail})`:""}` : "In progress") : "Kickoff in "+countdownStr(k-now)}</div>
       ${thenList.map(x=>{
         const xk=kickoff(x), x1=tcode(x.team1), x2=tcode(x.team2);
         return `<div class="then-row">Then: <b>${n(x1,x.team1)} vs ${n(x2,x.team2)}</b> · ${fmtDay(xk)} ${fmtTime(xk)} · <span class="cd">in ${countdownStr(xk-now)}</span></div>`;
@@ -625,11 +682,12 @@ document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click", ()=>{
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===b));
   render();
 }));
-function refreshAll(){ loadData(); loadSilver(); }
+function refreshAll(){ loadData(); loadSilver(); loadESPN(true); }
 document.getElementById("refreshBtn").addEventListener("click", refreshAll);
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) refreshAll(); });
-setInterval(refreshAll, 10*60000); // re-fetch results + odds every 10 min
-setInterval(render, 30000);        // tick the countdown every 30 s
+setInterval(refreshAll, 10*60000);            // feeds + odds + full ESPN sweep every 10 min
+setInterval(()=>loadESPN(false), 2*60000);    // quick ESPN poll (±1 day) for live scores
+setInterval(render, 30000);                   // tick the countdown every 30 s
 refreshAll();
 </script>
 </body>
