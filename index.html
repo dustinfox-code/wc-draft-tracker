@@ -132,7 +132,7 @@
       <div class="panel">
         <h2>About</h2>
         <p class="small">
-          Results auto-load from the public-domain <a href="https://github.com/openfootball/worldcup.json">openfootball world cup feed</a> (usually updated within hours of full time) — no manual entry needed. Page refreshes itself every 10 minutes.<br>
+          Results auto-load from the <a href="https://github.com/upbound-web/worldcup-live.json">fast-updating community mirror</a> (ESPN poller, ~5 min after full time) with the canonical <a href="https://github.com/openfootball/worldcup.json">openfootball feed</a> (hand-updated daily) as backup — whichever has more completed results is used; the header shows which. No manual entry needed. Page refreshes itself every 10 minutes.<br>
           Draft happened 2026-06-10. The pre-tournament <a href="draft.html">draft board &amp; simulator</a> is preserved here.
         </p>
       </div>
@@ -314,19 +314,40 @@ const evFor = code => (SILVER.teams && SILVER.teams[code]) ? SILVER.teams[code].
 // ============================================================================
 // Data load
 // ============================================================================
-const FEED = "https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json";
+// Two live feeds, same schema: a community mirror with an ESPN poller
+// (results within minutes) and the canonical hand-updated openfootball repo
+// (once a day). Both are fetched; the one with more completed results wins
+// (mirror on ties), so a stalled mirror degrades gracefully instead of
+// pinning the page to stale data. Bundled snapshot is the last resort.
+const FEEDS = [
+  {name:"live mirror", url:"https://raw.githubusercontent.com/upbound-web/worldcup-live.json/master/2026/worldcup.json"},
+  {name:"openfootball", url:"https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json"},
+];
 let DATA = null, LOADED_FROM = "";
 
+// completeness: filled-in scores (heavily) + resolved knockout team names
+const feedScore = d => d.matches.reduce((s,m)=>
+  s + (m.score && Array.isArray(m.score.ft) ? 10 : 0)
+    + (NAME_TO_CODE[tname(m.team1)] ? 1 : 0)
+    + (NAME_TO_CODE[tname(m.team2)] ? 1 : 0), 0);
+
 async function loadData(){
-  try{
-    const r = await fetch(FEED + "?t=" + Math.floor(Date.now()/60000), {cache:"no-store"});
+  const results = await Promise.allSettled(FEEDS.map(async f=>{
+    const r = await fetch(f.url + "?t=" + Math.floor(Date.now()/60000), {cache:"no-store"});
     if(!r.ok) throw new Error(r.status);
-    DATA = await r.json(); LOADED_FROM = "live feed";
-  }catch(e){
+    const d = await r.json();
+    if(!Array.isArray(d.matches) || d.matches.length < 100) throw new Error("bad payload");
+    return {f, d};
+  }));
+  const ok = results.filter(x=>x.status==="fulfilled").map(x=>x.value);
+  if(ok.length){
+    ok.sort((a,b)=>feedScore(b.d)-feedScore(a.d) || FEEDS.indexOf(a.f)-FEEDS.indexOf(b.f));
+    DATA = ok[0].d; LOADED_FROM = ok[0].f.name;
+  } else {
     try{
       const r = await fetch("data/worldcup.json");
-      DATA = await r.json(); LOADED_FROM = "bundled snapshot (live feed unreachable)";
-    }catch(e2){ LOADED_FROM = "no data"; }
+      DATA = await r.json(); LOADED_FROM = "bundled snapshot (live feeds unreachable)";
+    }catch(e){ LOADED_FROM = "no data"; }
   }
   render();
 }
