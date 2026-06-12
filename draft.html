@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>World Cup Draft Tracker — Dustin</title>
+<style>
+  :root {
+    --bg:#0f1419; --card:#1a2129; --card2:#212b36; --text:#e8edf2; --muted:#8b98a5;
+    --accent:#2f81f7; --green:#56d364; --gold:#e3b341; --red:#f85149; --track:#28323d;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:16px}
+  .wrap{max-width:1320px;margin:0 auto}
+  h1{font-size:1.2rem;margin-bottom:10px}
+  .topbar{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .stat{background:var(--card);border-radius:10px;padding:10px 16px;flex:1;min-width:140px}
+  .stat .label{color:var(--muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em}
+  .stat .value{font-size:1.05rem;font-weight:700;margin-top:2px}
+  .stat.you .value{color:var(--gold)}
+  .cols{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px}
+  @media(max-width:980px){.cols{grid-template-columns:1fr}}
+  .panel{background:var(--card);border-radius:12px;padding:14px}
+  .panel h2{font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+  table{width:100%;border-collapse:collapse;font-size:.85rem}
+  th{color:var(--muted);font-size:.68rem;text-transform:uppercase;text-align:right;padding:4px 6px;position:sticky;top:0;background:var(--card);z-index:1}
+  th:nth-child(1),th:nth-child(2){text-align:left}
+  td{padding:5px 6px;text-align:right;font-variant-numeric:tabular-nums;border-top:1px solid #232d38}
+  td:nth-child(1),td:nth-child(2){text-align:left}
+  tr.team-row{cursor:pointer}
+  tr.team-row:hover{background:var(--card2)}
+  tr.tier-break td{border-top:2px solid #3b4754}
+  tr.enter-target{outline:1px solid var(--gold);outline-offset:-1px}
+  .ev{font-weight:700;color:var(--green)}
+  .vorp-pos{color:var(--green)}
+  .vorp-neg{color:var(--muted)}
+  .pill{display:inline-block;font-size:.65rem;padding:1px 7px;border-radius:8px;background:var(--track);color:var(--muted);margin-left:6px}
+  .pill.gone{background:#3d2326;color:var(--red)}
+  .pill.toss{background:#3a3322;color:var(--gold)}
+  .pill.avail{background:#1f3328;color:var(--green)}
+  .pill.same{background:#2a2440;color:#b39ddb}
+  .board-scroll{max-height:560px;overflow-y:auto}
+  .rec{background:var(--card2);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+  .rec .name{font-weight:600}
+  .rec .meta{color:var(--muted);font-size:.75rem;margin-top:2px}
+  .rec .simline{font-size:.78rem;margin-top:3px;color:var(--accent)}
+  .rec .evbig{font-size:1.2rem;font-weight:800;color:var(--green);text-align:right}
+  .rec .evbig .sub{display:block;font-size:.6rem;color:var(--muted);font-weight:400}
+  .onclock{background:linear-gradient(90deg,#1f3328,transparent);border-left:3px solid var(--green);padding-left:10px}
+  .yourturn{background:linear-gradient(90deg,#3a3322,transparent);border-left:3px solid var(--gold);padding-left:10px}
+  .btn{background:var(--track);color:var(--text);border:none;border-radius:8px;padding:7px 14px;font-size:.8rem;cursor:pointer;font-weight:600}
+  .btn:hover{background:#34414f}
+  .btn.danger{color:var(--red)}
+  .btn.mini{padding:1px 6px;font-size:.7rem;border-radius:5px}
+  .controls{display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap}
+  input[type=search]{background:var(--card2);border:1px solid var(--track);color:var(--text);border-radius:8px;padding:7px 10px;font-size:.85rem;flex:1;min-width:120px}
+  .roster{margin-bottom:10px;border-radius:10px;background:var(--card2);padding:8px 12px}
+  .roster .mgr{display:flex;justify-content:space-between;font-weight:600;font-size:.85rem}
+  .roster .mgr .tot{color:var(--green)}
+  .roster .picks-list{color:var(--muted);font-size:.78rem;margin-top:3px;line-height:1.5}
+  .roster.you-roster{outline:1px solid var(--gold)}
+  .picklog{font-size:.75rem;color:var(--muted);max-height:200px;overflow-y:auto;line-height:1.9}
+  .small{font-size:.72rem;color:var(--muted);line-height:1.5;margin-top:8px}
+  .you-name{color:var(--gold);font-weight:700}
+  .editbar{background:#3a3322;color:var(--gold);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:.82rem;display:flex;justify-content:space-between;align-items:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⚽ 2026 World Cup Draft Tracker <span class="pill">team values: Silver Bulletin, untouched</span></h1>
+
+  <div class="topbar">
+    <div class="stat"><div class="label">Pick</div><div class="value" id="pickNum">—</div></div>
+    <div class="stat"><div class="label">On the clock</div><div class="value" id="onClock">—</div></div>
+    <div class="stat you"><div class="label">Your next pick</div><div class="value" id="nextYou">—</div></div>
+    <div class="stat"><div class="label">Best available (Silver EV)</div><div class="value" id="bestAvail">—</div></div>
+  </div>
+
+  <div class="cols">
+    <div class="panel">
+      <h2>Available teams — click to draft to whoever is on the clock
+        <span><button class="btn" id="undoBtn">↩ Undo</button> <button class="btn danger" id="resetBtn">Reset</button></span>
+      </h2>
+      <div class="editbar" id="editBar" style="display:none">
+        <span id="editMsg"></span><button class="btn mini" id="editCancel">Cancel (Esc)</button>
+      </div>
+      <div class="controls">
+        <input type="search" id="search" placeholder="Filter teams… (Enter drafts top match)">
+        <label class="small"><input type="checkbox" id="showDrafted"> show drafted</label>
+      </div>
+      <div class="board-scroll">
+        <table id="board">
+          <thead><tr>
+            <th>#</th><th>Team</th><th>Grp</th><th>EV (Silver)</th><th title="10th–90th percentile fantasy points across simulations">Floor–Ceil</th><th>VORP</th><th>GrpPts</th><th>Adv%</th><th>KO W</th><th>Champ%</th><th>FIFA</th><th>At your pick</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="small" id="boardFoot"></p>
+    </div>
+
+    <div>
+      <div class="panel" style="margin-bottom:14px">
+        <h2 id="recTitle">Recommendations</h2>
+        <div id="recs"></div>
+      </div>
+      <div class="panel" style="margin-bottom:14px">
+        <h2>Rosters (Silver EV totals)</h2>
+        <div id="rosters"></div>
+      </div>
+      <div class="panel">
+        <h2>Pick log <span class="small" style="margin:0">✎ change team · ↔ reassign manager</span></h2>
+        <div class="picklog" id="log"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script id="simcore">
+// ============================================================================
+// SIM CORE — pure logic, no DOM. Extractable for node-based calibration tests.
+//
+// Design principle: every team-strength number below comes verbatim from the
+// Silver Bulletin 2026 World Cup forecast (Datawrapper datasets 1oPAd/EodNy/
+// ArtIj for group W/D, JRO90 for the knockout ladder, pulled 2026-06-10).
+// The simulator SAMPLES these published probabilities; it never re-models or
+// re-weights any team. Per-team simulated marginals reproduce Silver's
+// numbers exactly (up to Monte Carlo noise) — see calibration test.
+// ============================================================================
+const MANAGERS = ["Steve Patti","Zane Truman","Dustin Fox","Mike Weiss","Chris Renz","Michael Biedenstein","Ben Snyders","Jordan Butcher"];
+const YOU = 2; // Dustin, slot 3 (0-indexed)
+const N = 8, ROUNDS = 6, TOTAL = 48;
+
+// W/D: expected group-stage wins/draws. r32..champ: P(reach round of 32 /
+// 16 / quarters / semis / final) and P(champion). fifa: FIFA rank Apr 2026.
+const TEAMS = [
+{code:"ARG",name:"Argentina",flag:"🇦🇷",group:"J",W:2.3,D:0.5,r32:0.989945,r16:0.73718,r8:0.614775,semi:0.45361,fin:0.2994,champ:0.18612,fifa:3},
+{code:"ESP",name:"Spain",flag:"🇪🇸",group:"H",W:2.3,D:0.5,r32:0.99252,r16:0.75589,r8:0.57024,semi:0.44114,fin:0.289345,champ:0.173715,fifa:2},
+{code:"ENG",name:"England",flag:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",group:"L",W:2.2,D:0.6,r32:0.981655,r16:0.772475,r8:0.48335,semi:0.30941,fin:0.176855,champ:0.09983,fifa:4},
+{code:"FRA",name:"France",flag:"🇫🇷",group:"I",W:1.9,D:0.7,r32:0.956685,r16:0.75577,r8:0.49879,semi:0.352705,fin:0.203905,champ:0.114175,fifa:1},
+{code:"BRA",name:"Brazil",flag:"🇧🇷",group:"C",W:2.0,D:0.7,r32:0.969515,r16:0.70227,r8:0.448295,semi:0.259095,fin:0.13088,champ:0.066115,fifa:6},
+{code:"GER",name:"Germany",flag:"🇩🇪",group:"E",W:2.1,D:0.5,r32:0.978835,r16:0.700145,r8:0.38115,semi:0.257365,fin:0.133645,champ:0.066765,fifa:10},
+{code:"POR",name:"Portugal",flag:"🇵🇹",group:"K",W:1.8,D:0.7,r32:0.948965,r16:0.67522,r8:0.393525,semi:0.20177,fin:0.103375,champ:0.048395,fifa:5},
+{code:"MEX",name:"Mexico",flag:"🇲🇽",group:"A",W:2.0,D:0.7,r32:0.97181,r16:0.737525,r8:0.38963,semi:0.120635,fin:0.03505,champ:0.01046,fifa:15},
+{code:"COL",name:"Colombia",flag:"🇨🇴",group:"K",W:1.8,D:0.7,r32:0.940145,r16:0.64386,r8:0.357225,semi:0.18153,fin:0.09062,champ:0.04112,fifa:13},
+{code:"BEL",name:"Belgium",flag:"🇧🇪",group:"G",W:2.0,D:0.6,r32:0.9628,r16:0.65816,r8:0.31311,semi:0.10438,fin:0.040865,champ:0.014305,fifa:9},
+{code:"NED",name:"Netherlands",flag:"🇳🇱",group:"F",W:1.8,D:0.7,r32:0.932345,r16:0.51323,r8:0.336235,semi:0.14377,fin:0.06076,champ:0.024245,fifa:7},
+{code:"NOR",name:"Norway",flag:"🇳🇴",group:"I",W:1.5,D:0.7,r32:0.90362,r16:0.5976,r8:0.33211,semi:0.19605,fin:0.092435,champ:0.041625,fifa:31},
+{code:"SUI",name:"Switzerland",flag:"🇨🇭",group:"B",W:1.8,D:0.6,r32:0.956065,r16:0.663905,r8:0.278615,semi:0.08727,fin:0.03158,champ:0.01093,fifa:19},
+{code:"CAN",name:"Canada",flag:"🇨🇦",group:"B",W:1.8,D:0.7,r32:0.94841,r16:0.61046,r8:0.24465,semi:0.06132,fin:0.018115,champ:0.004985,fifa:30},
+{code:"TUR",name:"Turkey",flag:"🇹🇷",group:"D",W:1.5,D:0.8,r32:0.85677,r16:0.606235,r8:0.306025,semi:0.12124,fin:0.051985,champ:0.01957,fifa:22},
+{code:"ECU",name:"Ecuador",flag:"🇪🇨",group:"E",W:1.6,D:0.7,r32:0.927045,r16:0.488245,r8:0.21664,semi:0.113175,fin:0.045735,champ:0.01809,fifa:23},
+{code:"URU",name:"Uruguay",flag:"🇺🇾",group:"H",W:1.6,D:0.7,r32:0.92972,r16:0.364945,r8:0.199425,semi:0.098875,fin:0.04025,champ:0.013635,fifa:17},
+{code:"USA",name:"United States",flag:"🇺🇸",group:"D",W:1.3,D:0.9,r32:0.79525,r16:0.514535,r8:0.224615,semi:0.08457,fin:0.033035,champ:0.01115,fifa:16},
+{code:"CRO",name:"Croatia",flag:"🇭🇷",group:"L",W:1.4,D:0.7,r32:0.866565,r16:0.40029,r8:0.14176,semi:0.05884,fin:0.02068,champ:0.00683,fifa:11},
+{code:"JPN",name:"Japan",flag:"🇯🇵",group:"F",W:1.4,D:0.8,r32:0.84426,r16:0.333115,r8:0.170275,semi:0.05886,fin:0.0196,champ:0.00617,fifa:18},
+{code:"MAR",name:"Morocco",flag:"🇲🇦",group:"C",W:1.2,D:0.9,r32:0.790615,r16:0.30659,r8:0.135715,semi:0.04367,fin:0.01358,champ:0.003815,fifa:8},
+{code:"SEN",name:"Senegal",flag:"🇸🇳",group:"I",W:1.1,D:0.8,r32:0.748385,r16:0.34591,r8:0.147215,semi:0.05984,fin:0.020675,champ:0.00663,fifa:14},
+{code:"PAR",name:"Paraguay",flag:"🇵🇾",group:"D",W:1.0,D:0.9,r32:0.681395,r16:0.36931,r8:0.13118,semi:0.042305,fin:0.013405,champ:0.004005,fifa:40},
+{code:"AUT",name:"Austria",flag:"🇦🇹",group:"J",W:1.2,D:0.7,r32:0.763115,r16:0.194575,r8:0.075235,semi:0.025405,fin:0.007445,champ:0.001905,fifa:24},
+{code:"EGY",name:"Egypt",flag:"🇪🇬",group:"G",W:1.1,D:0.8,r32:0.747265,r16:0.23782,r8:0.048975,semi:0.00926,fin:0.00203,champ:0.00039,fifa:29},
+{code:"SCO",name:"Scotland",flag:"🏴󠁧󠁢󠁳󠁣󠁴󠁿",group:"C",W:1.0,D:0.8,r32:0.719105,r16:0.22493,r8:0.086185,semi:0.02294,fin:0.006055,champ:0.00139,fifa:43},
+{code:"CZE",name:"Czechia",flag:"🇨🇿",group:"A",W:1.0,D:0.8,r32:0.6689,r16:0.27443,r8:0.070975,semi:0.012795,fin:0.00285,champ:0.000525,fifa:41},
+{code:"KOR",name:"South Korea",flag:"🇰🇷",group:"A",W:0.9,D:0.9,r32:0.66218,r16:0.264275,r8:0.067115,semi:0.011935,fin:0.002445,champ:0.00045,fifa:25},
+{code:"BIH",name:"Bosnia & Herz.",flag:"🇧🇦",group:"B",W:0.9,D:0.7,r32:0.67953,r16:0.18067,r8:0.03752,semi:0.004525,fin:0.000655,champ:0.0001,fifa:65},
+{code:"IRN",name:"Iran",flag:"🇮🇷",group:"G",W:0.9,D:0.8,r32:0.656715,r16:0.172905,r8:0.029975,semi:0.004685,fin:0.000935,champ:0.000135,fifa:21},
+{code:"CIV",name:"Ivory Coast",flag:"🇨🇮",group:"E",W:0.9,D:0.7,r32:0.66861,r16:0.161185,r8:0.038055,semi:0.00921,fin:0.00196,champ:0.000395,fifa:34},
+{code:"SWE",name:"Sweden",flag:"🇸🇪",group:"F",W:0.9,D:0.8,r32:0.636595,r16:0.14458,r8:0.050415,semi:0.01214,fin:0.00276,champ:0.000565,fifa:38},
+{code:"ALG",name:"Algeria",flag:"🇩🇿",group:"J",W:0.9,D:0.7,r32:0.637975,r16:0.13902,r8:0.04426,semi:0.01164,fin:0.00274,champ:0.00065,fifa:28},
+{code:"PAN",name:"Panama",flag:"🇵🇦",group:"L",W:0.7,D:0.7,r32:0.541905,r16:0.121745,r8:0.02728,semi:0.00598,fin:0.001155,champ:0.00025,fifa:33},
+{code:"AUS",name:"Australia",flag:"🇦🇺",group:"D",W:0.5,D:0.8,r32:0.393645,r16:0.14604,r8:0.03285,semi:0.007095,fin:0.001465,champ:0.000275,fifa:27},
+{code:"COD",name:"DR Congo",flag:"🇨🇩",group:"K",W:0.6,D:0.7,r32:0.407575,r16:0.082325,r8:0.015935,semi:0.003175,fin:0.0006,champ:0.000125,fifa:46},
+{code:"RSA",name:"South Africa",flag:"🇿🇦",group:"A",W:0.5,D:0.8,r32:0.35782,r16:0.08954,r8:0.0147,semi:0.001685,fin:0.000255,champ:0.00003,fifa:60},
+{code:"UZB",name:"Uzbekistan",flag:"🇺🇿",group:"K",W:0.5,D:0.7,r32:0.33734,r16:0.06057,r8:0.010355,semi:0.00185,fin:0.000335,champ:0.00006,fifa:50},
+{code:"NZL",name:"New Zealand",flag:"🇳🇿",group:"G",W:0.4,D:0.7,r32:0.305835,r16:0.03893,r8:0.003865,semi:0.000295,fin:0.00003,champ:0,fifa:85},
+{code:"TUN",name:"Tunisia",flag:"🇹🇳",group:"F",W:0.4,D:0.7,r32:0.28183,r16:0.03367,r8:0.00671,semi:0.00112,fin:0.00018,champ:0.00004,fifa:44},
+{code:"KSA",name:"Saudi Arabia",flag:"🇸🇦",group:"H",W:0.4,D:0.6,r32:0.30351,r16:0.03064,r8:0.00385,semi:0.000385,fin:0.00003,champ:0.000005,fifa:61},
+{code:"CPV",name:"Cape Verde",flag:"🇨🇻",group:"H",W:0.4,D:0.6,r32:0.293405,r16:0.029405,r8:0.003815,semi:0.00043,fin:0.00005,champ:0.00001,fifa:69},
+{code:"GHA",name:"Ghana",flag:"🇬🇭",group:"L",W:0.3,D:0.6,r32:0.24001,r16:0.029155,r8:0.00408,semi:0.000545,fin:0.00008,champ:0.000005,fifa:74},
+{code:"JOR",name:"Jordan",flag:"🇯🇴",group:"J",W:0.3,D:0.6,r32:0.23473,r16:0.02664,r8:0.00425,semi:0.00057,fin:0.00009,champ:0.000005,fifa:63},
+{code:"HAI",name:"Haiti",flag:"🇭🇹",group:"C",W:0.3,D:0.6,r32:0.220505,r16:0.02609,r8:0.004605,semi:0.000455,fin:0.00005,champ:0.000005,fifa:83},
+{code:"IRQ",name:"Iraq",flag:"🇮🇶",group:"I",W:0.2,D:0.5,r32:0.123015,r16:0.018595,r8:0.002865,semi:0.000365,fin:0.000015,champ:0.000005,fifa:57},
+{code:"QAT",name:"Qatar",flag:"🇶🇦",group:"B",W:0.2,D:0.5,r32:0.13044,r16:0.011075,r8:0.000845,semi:0.00004,fin:0,champ:0,fifa:55},
+{code:"CUW",name:"Curaçao",flag:"🇨🇼",group:"E",W:0.2,D:0.5,r32:0.115125,r16:0.008325,r8:0.000735,semi:0.00005,fin:0.000015,champ:0,fifa:82},
+];
+
+// Derived fields — pure arithmetic on Silver's numbers under the league scoring
+TEAMS.forEach(t=>{
+  t.kow = t.r16 + t.r8 + t.semi + t.fin + t.champ;       // expected knockout wins
+  t.pts = 3*t.W + t.D;                                   // expected group points
+  t.ev  = t.pts + 4*t.r32 + 5*t.kow + 5*t.champ;         // expected fantasy points
+});
+[...TEAMS].sort((a,b)=>b.ev-a.ev).forEach((t,i)=>t.evRank=i+1);
+[...TEAMS].sort((a,b)=>a.fifa-b.fifa).forEach((t,i)=>t.fifaRank48=i+1);
+const IDX = Object.fromEntries(TEAMS.map((t,i)=>[t.code,i]));
+
+const slotForPick = p => { const r=Math.floor(p/N); const i=p%N; return r%2===0 ? i : N-1-i; };
+const yourPickNumbers = []; for(let p=0;p<TOTAL;p++) if(slotForPick(p)===YOU) yourPickNumbers.push(p);
+
+// --- Tournament simulator -------------------------------------------------
+// One uniform draw v per team-sim drives both group points (inverse-CDF of
+// the trinomial implied by Silver's expected W/D/L) and the knockout ladder
+// (nested thresholds at Silver's published round probabilities), so a team's
+// good sims are good everywhere. Exactly one champion per sim, drawn from
+// Silver's championship distribution; non-champion ladders use thresholds
+// conditioned on not-champion so every per-team marginal still matches
+// Silver's published number exactly. (Finalist count is not constrained —
+// the only approximation, and it's points-neutral on average.)
+function fact(n){return n<=1?1:n*fact(n-1)}
+TEAMS.forEach(t=>{
+  const pw=t.W/3, pd=t.D/3, pl=Math.max(0,1-pw-pd);
+  const items=[];
+  for(let w=0;w<=3;w++)for(let d=0;d<=3-w;d++){
+    const l=3-w-d;
+    items.push([3*w+d, 6/(fact(w)*fact(d)*fact(l))*pw**w*pd**d*pl**l]);
+  }
+  items.sort((a,b)=>a[0]-b[0]);
+  const merged=[];
+  for(const [pts,p] of items){
+    if(merged.length && merged[merged.length-1][0]===pts) merged[merged.length-1][1]+=p;
+    else merged.push([pts,p]);
+  }
+  let c=0; t.gcdf = merged.map(([pts,p])=>{c+=p;return [pts,c]});
+  t.gcdf[t.gcdf.length-1][1]=1;
+  const nc = 1 - t.champ;
+  t.q = [t.r32,t.r16,t.r8,t.semi,t.fin].map(p => nc>0 ? (p-t.champ)/nc : 0);
+});
+const champCum=[]; { let c=0; TEAMS.forEach(t=>{c+=t.champ; champCum.push(c)}); }
+const champTotal = champCum[champCum.length-1];
+
+function simTournament(out){ // out: Float64Array(48); returns champion index
+  let r=Math.random()*champTotal, ci=0;
+  while(ci<TOTAL-1 && champCum[ci]<r) ci++;
+  for(let i=0;i<TOTAL;i++){
+    const t=TEAMS[i];
+    const v=Math.random();
+    let g=t.gcdf[t.gcdf.length-1][0];
+    for(let j=0;j<t.gcdf.length;j++){ if(v<=t.gcdf[j][1]){ g=t.gcdf[j][0]; break; } }
+    let p=g;
+    if(i===ci){
+      p += 4 + 5*5 + 5; // advance + 5 KO wins + title bonus
+    } else if(v > 1-t.q[0]){
+      p += 4;
+      for(let k=1;k<5;k++){ if(v > 1-t.q[k]) p += 5; else break; }
+    }
+    out[i]=p;
+  }
+  return ci;
+}
+
+// One-time percentile pass: joint draws off the calibrated simulator give
+// each team's 10th/90th percentile fantasy points (floor/ceiling display).
+{
+  const PSIMS=5000;
+  const buf = TEAMS.map(()=>new Float64Array(PSIMS));
+  const pts = new Float64Array(TOTAL);
+  for(let s=0;s<PSIMS;s++){
+    simTournament(pts);
+    for(let i=0;i<TOTAL;i++) buf[i][s]=pts[i];
+  }
+  TEAMS.forEach((t,i)=>{
+    const a=buf[i].sort();
+    t.p10=a[Math.floor(0.10*PSIMS)];
+    t.p90=a[Math.floor(0.90*PSIMS)];
+  });
+}
+
+// --- Opponent behavior model (about managers, never about teams) -----------
+// percScore blends Silver-EV rank with FIFA-rank name recognition; w is
+// learned from observed picks (Laplace-smoothed, 50/50 prior).
+const percScore=(i,w)=>(1-w)*TEAMS[i].evRank + w*TEAMS[i].fifaRank48;
+function percOrder(w){ return TEAMS.map((_,i)=>i).sort((a,b)=>percScore(a,w)-percScore(b,w)); }
+const EV_ORDER = TEAMS.map((_,i)=>i).sort((a,b)=>TEAMS[b].ev-TEAMS[a].ev);
+
+// state: [{code, slot}] with slot = effective manager slot for that pick.
+// candidateCode: the team the user takes at their next turn (null = EV-greedy).
+// Returns P(user finishes 1st | candidate still available), plus availability.
+function leagueSimCandidate(state, candidateCode, nSims, w){
+  const startPick = state.length;
+  const pOrder = percOrder(w);
+  const baseTaken = new Uint8Array(TOTAL);
+  const baseRosters = Array.from({length:N},()=>[]);
+  state.forEach((pk,i)=>{ const ti=IDX[pk.code]; baseTaken[ti]=1; baseRosters[pk.slot].push(ti); });
+  const candIdx = candidateCode!=null ? IDX[candidateCode] : -1;
+  let wins=0, valid=0, taken=0;
+  const ptsArr = new Float64Array(TOTAL);
+  for(let s=0;s<nSims;s++){
+    const tk = Uint8Array.from(baseTaken);
+    const rosters = baseRosters.map(r=>r.slice());
+    let candPending = candIdx>=0, discard=false;
+    for(let p=startPick;p<TOTAL;p++){
+      const slot=slotForPick(p);
+      let pick=-1;
+      if(slot===YOU){
+        if(candPending){
+          if(tk[candIdx]){ discard=true; break; }
+          pick=candIdx; candPending=false;
+        } else {
+          for(const ti of EV_ORDER){ if(!tk[ti]){ pick=ti; break; } }
+        }
+      } else {
+        let a=-1,b=-1,c=-1;
+        for(const ti of pOrder){ if(!tk[ti]){ if(a<0)a=ti; else if(b<0)b=ti; else {c=ti;break;} } }
+        const r=Math.random();
+        pick = r<0.6 ? a : r<0.85 ? (b<0?a:b) : (c<0?(b<0?a:b):c);
+      }
+      tk[pick]=1; rosters[slot].push(pick);
+    }
+    if(discard){ taken++; continue; }
+    simTournament(ptsArr);
+    let best=-Infinity, bestCt=0, myTot=0;
+    for(let m=0;m<N;m++){
+      let tot=0; for(const ti of rosters[m]) tot+=ptsArr[ti];
+      if(m===YOU) myTot=tot;
+      if(tot>best+1e-9){ best=tot; bestCt=1; } else if(tot>best-1e-9){ bestCt++; }
+    }
+    if(myTot>best-1e-9) wins += 1/bestCt;
+    valid++;
+  }
+  return {wins, valid, taken};
+}
+
+// Adaptive opponent weight, replayed from pick history. For each non-user
+// pick, was the chosen team nearer the top of the FIFA list or the Silver-EV
+// list among teams available at that moment? Laplace-smoothed, 50/50 prior.
+// state: [{code, slot}] with effective slots.
+function computeW(state){
+  let f=0,e=0;
+  const tk=new Set();
+  for(const pk of state){
+    if(pk.slot!==YOU){
+      const avail=TEAMS.filter(t=>!tk.has(t.code));
+      const posF=[...avail].sort((a,b)=>a.fifaRank48-b.fifaRank48).findIndex(t=>t.code===pk.code);
+      const posE=[...avail].sort((a,b)=>b.ev-a.ev).findIndex(t=>t.code===pk.code);
+      if(posF<posE) f++; else if(posE<posF) e++;
+    }
+    tk.add(pk.code);
+  }
+  return {w:(f+1)/(f+e+2), n:f+e};
+}
+
+// Completed-draft league odds: P(finish 1st) per manager
+function managerWinOdds(state, nSims){
+  const rosters = Array.from({length:N},()=>[]);
+  state.forEach(pk=>rosters[pk.slot].push(IDX[pk.code]));
+  const winShare = new Float64Array(N);
+  const ptsArr = new Float64Array(TOTAL);
+  for(let s=0;s<nSims;s++){
+    simTournament(ptsArr);
+    const totals = rosters.map(r=>r.reduce((a,ti)=>a+ptsArr[ti],0));
+    const best = Math.max(...totals);
+    const winners = totals.map((t,m)=>t>best-1e-9?m:-1).filter(m=>m>=0);
+    winners.forEach(m=>winShare[m]+=1/winners.length);
+  }
+  return Array.from(winShare, x=>x/nSims);
+}
+</script>
+
+<script>
+// ============================================================================
+// UI layer
+// ============================================================================
+const TIER_AFTER = new Set([2,4,6,10,15,18,22,28,35]);
+const teamByCode = Object.fromEntries(TEAMS.map(t=>[t.code,t]));
+
+// picks: [{code, slot: number|null}]; slot=null → snake order slot.
+// Migrate v1 storage (plain code strings).
+let picks = (JSON.parse(localStorage.getItem("wcDraftPicks")||"[]"))
+  .map(x=> typeof x==="string" ? {code:x, slot:null} : x);
+let editingPick = null;
+
+const effSlot = i => picks[i].slot ?? slotForPick(i);
+const drafted = () => new Set(picks.map(p=>p.code));
+const available = () => TEAMS.filter(t=>!drafted().has(t.code));
+const effState = () => picks.map((p,i)=>({code:p.code, slot:effSlot(i)}));
+const myTeams = () => picks.filter((p,i)=>effSlot(i)===YOU).map(p=>teamByCode[p.code]);
+const stateKey = () => picks.map(p=>p.code+":"+(p.slot??"")).join("|");
+
+function picksUntilYourTurn(){
+  const p = picks.length;
+  if(p>=TOTAL) return null;
+  const next = yourPickNumbers.find(x=>x>=p);
+  return next==null ? null : next-p;
+}
+
+// VORP baseline: best Silver-EV projected to survive until the user's next
+// pick (or, when on the clock, the pick after this one).
+function vorpBaseline(w){
+  const p=picks.length;
+  const myNext=yourPickNumbers.find(x=>x>=p);
+  if(myNext==null) return null;
+  let target=myNext, from=p;
+  if(myNext===p){
+    const nn=yourPickNumbers.find(x=>x>p);
+    if(nn==null) return null;
+    target=nn; from=p+1;
+  }
+  const removals=target-from;
+  const avail=available();
+  const goneSet=new Set([...avail].sort((a,b)=>percScore(IDX[a.code],w)-percScore(IDX[b.code],w))
+    .slice(0,removals).map(t=>t.code));
+  let base=0;
+  for(const t of avail) if(!goneSet.has(t.code)) base=Math.max(base,t.ev);
+  return base;
+}
+
+function availabilityTag(t,w){
+  const k=picksUntilYourTurn();
+  if(k==null) return "";
+  if(k===0) return "<span class='pill avail'>your turn</span>";
+  const avail=[...available()].sort((a,b)=>percScore(IDX[a.code],w)-percScore(IDX[b.code],w));
+  const idx=avail.findIndex(x=>x.code===t.code);
+  if(idx<k) return "<span class='pill gone'>likely gone</span>";
+  if(idx<k+3) return "<span class='pill toss'>toss-up</span>";
+  return "<span class='pill avail'>likely there</span>";
+}
+
+function sameGroupNote(t){
+  const clash=myTeams().find(m=>m.group===t.group && m.code!==t.code);
+  return clash?`<span class='pill same' title='Plays your ${clash.name} in the group'>grp w/ ${clash.code}</span>`:"";
+}
+
+// Shared by the board render and the Enter-to-draft handler.
+function filteredTeams(q, showDrafted){
+  const base = showDrafted? [...TEAMS].sort((a,b)=>b.ev-a.ev) : [...available()].sort((a,b)=>b.ev-a.ev);
+  return base.filter(t=>!q || t.name.toLowerCase().includes(q) || t.code.toLowerCase().includes(q) || ("group "+t.group.toLowerCase()).includes(q));
+}
+
+// --- Async simulation runner ------------------------------------------------
+// Advisory P(win league) per candidate. Sorted display stays on Silver EV.
+let sim = {key:null, gen:0, results:{}, running:false, mgrOdds:null};
+const SIMS_PER_CANDIDATE = 4000;
+
+function scheduleSims(){
+  const key=stateKey();
+  if(sim.key===key) return;
+  const gen=++sim.gen;
+  sim={key, gen, results:{}, running:true, mgrOdds:null};
+  if(picks.length>=TOTAL){
+    setTimeout(()=>{
+      if(gen!==sim.gen) return;
+      sim.mgrOdds = managerWinOdds(effState(), 5000);
+      sim.running=false; render();
+    },10);
+    return;
+  }
+  const {w}=computeW(effState());
+  const cands=[...available()].sort((a,b)=>b.ev-a.ev).slice(0,8).map(t=>t.code);
+  let i=0;
+  const step=()=>{
+    if(gen!==sim.gen) return;
+    if(i>=cands.length){ sim.running=false; render(); return; }
+    const code=cands[i++];
+    const r=leagueSimCandidate(effState(), code, SIMS_PER_CANDIDATE, w);
+    sim.results[code]={
+      pwin: r.valid>50 ? r.wins/r.valid : null,
+      avail: (r.valid+r.taken)>0 ? r.valid/(r.valid+r.taken) : null,
+    };
+    render();
+    setTimeout(step,0);
+  };
+  setTimeout(step,0);
+}
+
+function simLine(code, myTurn){
+  const r=sim.results[code];
+  if(!r) return sim.running?`<div class="simline">⏳ simulating…</div>`:"";
+  if(r.pwin==null) return `<div class="simline">rarely available at your pick</div>`;
+  const availStr = myTurn||r.avail==null||r.avail>0.995 ? "" : ` · available at your pick: ${(r.avail*100).toFixed(0)}%`;
+  return `<div class="simline">P(win league): ${(r.pwin*100).toFixed(1)}%${availStr}</div>`;
+}
+
+// --- Render -----------------------------------------------------------------
+function render(){
+  const p=picks.length, done=p>=TOTAL;
+  const {w, n:wN}=computeW(effState());
+  document.getElementById("pickNum").textContent = done? "Draft complete" : `${p+1} · Rd ${Math.floor(p/N)+1}`;
+  document.getElementById("onClock").innerHTML = done? "—" : (slotForPick(p)===YOU? "<span class='you-name'>YOU (Dustin)</span>" : MANAGERS[slotForPick(p)]);
+  const k=picksUntilYourTurn();
+  document.getElementById("nextYou").textContent = k==null? "done" : (k===0? "NOW" : `in ${k} pick${k>1?"s":""} (#${p+k+1})`);
+  const avail=[...available()].sort((a,b)=>b.ev-a.ev);
+  document.getElementById("bestAvail").textContent = avail.length? `${avail[0].flag} ${avail[0].name} (${avail[0].ev.toFixed(1)})` : "—";
+
+  // edit bar
+  document.getElementById("editBar").style.display = editingPick==null? "none":"flex";
+  if(editingPick!=null){
+    const pk=picks[editingPick];
+    document.getElementById("editMsg").textContent =
+      `Editing pick #${editingPick+1} (${MANAGERS[effSlot(editingPick)]} — currently ${teamByCode[pk.code].name}): click a team on the board to replace it`;
+  }
+
+  // board
+  const q=document.getElementById("search").value.toLowerCase().trim();
+  const showDrafted=document.getElementById("showDrafted").checked;
+  const baseline=vorpBaseline(w);
+  const rows=filteredTeams(q, showDrafted);
+  const enterTarget = q ? rows.find(t=>!drafted().has(t.code)) : null;
+  document.querySelector("#board tbody").innerHTML = rows.map(t=>{
+    const isDrafted=drafted().has(t.code);
+    const vorp=baseline!=null && !isDrafted ? t.ev-baseline : null;
+    const isTarget = enterTarget && t.code===enterTarget.code;
+    return `<tr class="team-row ${TIER_AFTER.has(t.evRank)?'tier-break':''} ${isTarget?'enter-target':''}" data-code="${t.code}" style="${isDrafted?'opacity:.35;text-decoration:line-through':''}">
+      <td>${t.evRank}</td>
+      <td>${t.flag} ${t.name} ${isDrafted?"":sameGroupNote(t)}${isTarget?" <span class='pill toss'>⏎ drafts</span>":""}</td>
+      <td style="text-align:center">${t.group}</td>
+      <td class="ev">${t.ev.toFixed(1)}</td>
+      <td title="10th–90th percentile fantasy points across simulations" class="vorp-neg">${Math.round(t.p10)}–${Math.round(t.p90)}</td>
+      <td class="${vorp!=null&&vorp>=0?'vorp-pos':'vorp-neg'}">${vorp==null?"":(vorp>=0?"+":"")+vorp.toFixed(1)}</td>
+      <td>${t.pts.toFixed(1)}</td>
+      <td>${(t.r32*100).toFixed(0)}</td>
+      <td>${t.kow.toFixed(2)}</td>
+      <td>${(t.champ*100).toFixed(1)}</td>
+      <td>${t.fifa}</td>
+      <td>${isDrafted?"":availabilityTag(t,w)}</td>
+    </tr>`;
+  }).join("");
+  document.getElementById("boardFoot").innerHTML =
+    `EV = expected fantasy points from Silver Bulletin's published simulations under your scoring (3×grp wins + 1×draws + 4×advance + 5×KO wins + 5×title). ` +
+    `VORP = EV minus the best Silver-EV projected to survive to your next pick. ` +
+    `Opponent model: room drafting ${(w*100).toFixed(0)}% by FIFA name recognition${wN?` (learned from ${wN} pick${wN===1?"":"s"})`:" (50/50 prior)"} — affects availability only, never team values.`;
+
+  // recommendations
+  const recTitle=document.getElementById("recTitle"), recsEl=document.getElementById("recs");
+  if(done){
+    recTitle.textContent="Draft complete — league odds in rosters";
+    recsEl.innerHTML = sim.running? "<div class='small'>⏳ simulating final league odds…</div>" : "";
+  } else {
+    const myTurn=slotForPick(p)===YOU;
+    recTitle.innerHTML = myTurn? "🟡 YOUR PICK — Silver ranking" : `Plan for your pick #${p+(k||0)+1} — Silver ranking`;
+    let pool;
+    if(myTurn) pool=avail.slice(0,5);
+    else{
+      const byPerc=[...available()].sort((a,b)=>percScore(IDX[a.code],w)-percScore(IDX[b.code],w));
+      const goneSet=new Set(byPerc.slice(0,Math.max(0,k||0)).map(t=>t.code));
+      pool=avail.filter(t=>!goneSet.has(t.code)).slice(0,5);
+    }
+    const baseline2=vorpBaseline(w);
+    recsEl.innerHTML = pool.map((t,i)=>`
+      <div class="rec ${i===0?(myTurn?'yourturn':'onclock'):''}">
+        <div>
+          <div class="name">${t.flag} ${t.name} <span class="pill">Grp ${t.group}</span> ${sameGroupNote(t)}</div>
+          <div class="meta">adv ${(t.r32*100).toFixed(0)}% · ${t.kow.toFixed(2)} exp KO wins · champ ${(t.champ*100).toFixed(1)}% · floor ${Math.round(t.p10)} / ceiling ${Math.round(t.p90)} · FIFA #${t.fifa}${baseline2!=null?` · VORP ${(t.ev-baseline2>=0?"+":"")+(t.ev-baseline2).toFixed(1)}`:""}</div>
+          ${simLine(t.code, myTurn)}
+        </div>
+        <div class="evbig">${t.ev.toFixed(1)}<span class="sub">Silver EV</span></div>
+      </div>`).join("") || "<div class='small'>No teams left.</div>";
+    recsEl.innerHTML += `<div class="small">Cards are ordered by Silver EV. P(win league) is advisory — it recombines Silver's published odds under this league's scoring/payout (no team re-modeling).</div>`;
+  }
+
+  // rosters
+  const byMgr=MANAGERS.map((m,si)=>{
+    const ts=picks.map((pk,i)=>({pk,i})).filter(x=>effSlot(x.i)===si).map(x=>teamByCode[x.pk.code]);
+    return {m,si,ts,tot:ts.reduce((s,t)=>s+t.ev,0)};
+  }).sort((a,b)=>b.tot-a.tot);
+  document.getElementById("rosters").innerHTML = byMgr.map(r=>`
+    <div class="roster ${r.si===YOU?'you-roster':''}">
+      <div class="mgr"><span>${r.si===YOU?'⭐ ':''}${r.m}${sim.mgrOdds?` <span class="pill">win ${(sim.mgrOdds[r.si]*100).toFixed(1)}%</span>`:""}</span><span class="tot">${r.tot.toFixed(1)}</span></div>
+      <div class="picks-list">${r.ts.map(t=>`${t.flag} ${t.code}`).join(" · ")||"<i>no picks yet</i>"}</div>
+    </div>`).join("");
+
+  // log
+  document.getElementById("log").innerHTML = picks.map((pk,i)=>{
+    const t=teamByCode[pk.code], mgr=MANAGERS[effSlot(i)];
+    return `<div>#${i+1} (Rd ${Math.floor(i/N)+1}) — <b>${effSlot(i)===YOU?'⭐ ':''}${mgr}${pk.slot!=null?' ↔':''}</b>: ${t.flag} ${t.name} (EV ${t.ev.toFixed(1)})
+      <button class="btn mini" data-edit="${i}" title="Change team">✎</button>
+      <button class="btn mini" data-slot="${i}" title="Reassign manager">↔</button></div>`;
+  }).reverse().join("");
+
+  localStorage.setItem("wcDraftPicks", JSON.stringify(picks));
+  scheduleSims();
+}
+
+// --- Events -------------------------------------------------------------------
+document.querySelector("#board tbody").addEventListener("click", e=>{
+  const tr=e.target.closest("tr.team-row"); if(!tr) return;
+  const code=tr.dataset.code;
+  if(editingPick!=null){
+    if(drafted().has(code) && picks[editingPick].code!==code) return;
+    picks[editingPick]={...picks[editingPick], code};
+    editingPick=null; render(); return;
+  }
+  if(drafted().has(code)||picks.length>=TOTAL) return;
+  picks.push({code, slot:null}); render();
+});
+document.getElementById("log").addEventListener("click", e=>{
+  const ed=e.target.dataset.edit, sl=e.target.dataset.slot;
+  if(ed!=null){
+    editingPick=+ed;
+    document.getElementById("showDrafted").checked=false;
+    render(); return;
+  }
+  if(sl!=null){
+    const i=+sl;
+    const cur=effSlot(i)+1;
+    const ans=prompt(`Pick #${i+1} (${teamByCode[picks[i].code].name}) belongs to which manager?\n`+
+      MANAGERS.map((m,j)=>`${j+1} ${m}${j===YOU?" (you)":""}`).join("\n")+`\n\n0 = restore snake order`, String(cur));
+    if(ans==null) return;
+    const v=parseInt(ans,10);
+    if(v===0) picks[i]={...picks[i], slot:null};
+    else if(v>=1&&v<=N) picks[i]={...picks[i], slot:v-1};
+    render();
+  }
+});
+document.addEventListener("keydown", e=>{ if(e.key==="Escape"&&editingPick!=null){ editingPick=null; render(); } });
+document.getElementById("editCancel").onclick=()=>{ editingPick=null; render(); };
+document.getElementById("undoBtn").onclick=()=>{ picks.pop(); editingPick=null; render(); };
+document.getElementById("resetBtn").onclick=()=>{ if(confirm("Clear all picks?")){ picks=[]; editingPick=null; render(); } };
+document.getElementById("search").oninput=render;
+document.getElementById("search").addEventListener("keydown", e=>{
+  if(e.key==="Escape"){ e.target.value=""; editingPick=null; render(); return; }
+  if(e.key!=="Enter") return;
+  const q=e.target.value.toLowerCase().trim();
+  if(!q) return; // never draft on a blind Enter
+  const top=filteredTeams(q,false)[0]; // available teams only
+  if(!top) return;
+  if(editingPick!=null){ picks[editingPick]={...picks[editingPick], code:top.code}; editingPick=null; }
+  else if(picks.length<TOTAL) picks.push({code:top.code, slot:null});
+  e.target.value=""; render();
+});
+document.getElementById("showDrafted").onchange=render;
+render();
+</script>
+</body>
+</html>
