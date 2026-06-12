@@ -23,6 +23,11 @@
   .owner{display:inline-block;font-size:.62rem;padding:0 6px;border-radius:7px;font-weight:700;vertical-align:1px}
   .hero{background:linear-gradient(110deg,#1c2a1f,var(--card));border:1px solid #2c4a33;border-radius:14px;padding:16px 18px;margin-bottom:14px}
   .hero .label{color:var(--gold);font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+  .hero-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+  .hero-controls{display:flex;gap:6px;align-items:center}
+  .then-row{color:var(--muted);font-size:.8rem;margin-top:7px}
+  .then-row b{color:var(--text);font-weight:600}
+  .then-row .cd{color:var(--green);font-weight:600}
   .hero .match{font-size:1.35rem;font-weight:800;margin:6px 0 2px}
   .hero .meta{color:var(--muted);font-size:.85rem}
   .hero .count{font-size:1.1rem;font-weight:700;color:var(--green);margin-top:4px}
@@ -81,7 +86,17 @@
 <div class="wrap">
   <h1>⚽ 2026 World Cup Draft League <span class="pill">live results</span> <span class="updated" id="updated"></span> <button class="btn" id="refreshBtn" style="margin-left:auto">↻ Refresh</button></h1>
 
-  <div class="hero" id="hero" style="display:none"></div>
+  <div class="hero">
+    <div class="hero-head">
+      <div class="label" id="heroLabel">Next match</div>
+      <div class="hero-controls">
+        <select id="mgrSel"></select>
+        <select id="teamSel"><option value="">+ follow a team…</option></select>
+      </div>
+    </div>
+    <div id="extraChips"></div>
+    <div id="heroBody"></div>
+  </div>
 
   <div class="topbar" id="topbar"></div>
 
@@ -105,13 +120,7 @@
     </div>
     <div>
       <div class="panel">
-        <h2>Watch list — your next games</h2>
-        <div class="settings-row">
-          Follow:
-          <select id="mgrSel"></select>
-          <select id="teamSel"><option value="">+ add team…</option></select>
-        </div>
-        <div id="extraChips"></div>
+        <h2>Watch list — upcoming games for the teams you follow</h2>
         <div id="watchlist"></div>
       </div>
       <div class="panel">
@@ -380,23 +389,39 @@ function render(){
 
   document.getElementById("updated").textContent = DATA ? `data: ${LOADED_FROM} · rendered ${fmtTime(now)}` : "loading…";
 
-  // --- hero: next followed match
-  const future = ms.filter(m=>{
-    const c1=tcode(m.team1), c2=tcode(m.team2);
-    if(!((c1&&followed.has(c1))||(c2&&followed.has(c2)))) return false;
-    const st=status(m,now); return st==="up"||st==="live";
-  }).sort((a,b)=>kickoff(a)-kickoff(b));
-  const hero = document.getElementById("hero");
+  // --- hero: next matches for the followed selection
+  const involves = (m,set)=>{const c1=tcode(m.team1),c2=tcode(m.team2);return (c1&&set.has(c1))||(c2&&set.has(c2));};
+  const future = ms.filter(m=>{const st=status(m,now);return (st==="up"||st==="live")&&involves(m,followed);})
+                   .sort((a,b)=>kickoff(a)-kickoff(b));
+  const mgrShort = MGR[prefs.manager].short;
+  document.getElementById("heroLabel").innerHTML =
+    `Next up for <span style="color:var(--text)">${mgrShort}'s teams</span>` +
+    (prefs.extra.length?` + <span style="color:var(--text)">${prefs.extra.map(c=>BY_CODE[c].name).join(", ")}</span>`:"");
+  const heroBody = document.getElementById("heroBody");
   if(future.length){
     const m=future[0], k=kickoff(m), live=status(m,now)==="live";
+    const n = (c,raw) => c?`${BY_CODE[c].flag} ${BY_CODE[c].name}`:tname(raw);
     const c1=tcode(m.team1), c2=tcode(m.team2);
-    const n = c => c?`${BY_CODE[c].flag} ${BY_CODE[c].name}`:tname(c);
-    hero.style.display="block";
-    hero.innerHTML = `<div class="label">${live?"🔴 LIVE — one of your teams is playing":"Next match for your teams"}</div>
-      <div class="match">${n(c1)||tname(m.team1)} vs ${n(c2)||tname(m.team2)}</div>
+    // "then" lines: the next couple of followed games, plus — always — the
+    // next game of each explicitly-followed extra team, so adding a team
+    // visibly changes the banner even when it plays later than your roster.
+    const mkey = x=>x.date+tname(x.team1)+tname(x.team2);
+    const seen = new Set([mkey(m)]);
+    const thenList = future.slice(1,3).filter(x=>!seen.has(mkey(x)) && seen.add(mkey(x)));
+    for(const c of prefs.extra){
+      const nm = future.find(x=>involves(x,new Set([c])));
+      if(nm && !seen.has(mkey(nm))){ thenList.push(nm); seen.add(mkey(nm)); }
+    }
+    thenList.sort((a,b)=>kickoff(a)-kickoff(b));
+    heroBody.innerHTML = `
+      <div class="match">${live?'<span class="pill live">LIVE</span> ':""}${n(c1,m.team1)} vs ${n(c2,m.team2)}</div>
       <div class="meta">${m.group||m.round} · ${m.ground||""} · ${fmtDay(k)} ${fmtTime(k)} your time</div>
-      <div class="count">${live?"In progress":"Kickoff in "+countdownStr(k-now)}</div>`;
-  } else hero.style.display="none";
+      <div class="count">${live?"In progress":"Kickoff in "+countdownStr(k-now)}</div>
+      ${thenList.map(x=>{
+        const xk=kickoff(x), x1=tcode(x.team1), x2=tcode(x.team2);
+        return `<div class="then-row">Then: <b>${n(x1,x.team1)} vs ${n(x2,x.team2)}</b> · ${fmtDay(xk)} ${fmtTime(xk)} · <span class="cd">in ${countdownStr(xk-now)}</span></div>`;
+      }).join("")}`;
+  } else heroBody.innerHTML = `<p class="small" style="margin-top:4px">No upcoming matches for this selection.</p>`;
 
   // --- topbar
   const totals = MANAGERS.map(mgr=>{
@@ -464,7 +489,7 @@ function render(){
   if(!mgrSel.options.length){
     mgrSel.innerHTML = MANAGERS.map(m=>`<option value="${m.name}">${m.name}'s teams</option>`).join("");
     const teamSel=document.getElementById("teamSel");
-    teamSel.innerHTML = `<option value="">+ add team…</option>` + [...TEAMS].sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<option value="${t.code}">${t.flag} ${t.name}</option>`).join("");
+    teamSel.innerHTML = `<option value="">+ follow a team…</option>` + [...TEAMS].sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<option value="${t.code}">${t.flag} ${t.name}</option>`).join("");
   }
   mgrSel.value = prefs.manager;
   document.getElementById("extraChips").innerHTML = prefs.extra.map(c=>`<span class="chip">${BY_CODE[c].flag} ${BY_CODE[c].name} <button data-rm="${c}">✕</button></span>`).join("");
