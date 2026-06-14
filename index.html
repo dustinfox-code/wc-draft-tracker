@@ -577,7 +577,7 @@ function render(){
 
   const ageDays = SILVER.asOf ? (now - new Date(SILVER.asOf))/86400000 : null;
   const silverNote = SILVER.teams
-    ? `Silver odds upd ${new Date(SILVER.asOf).toLocaleDateString([],{month:"short",day:"numeric"})}${SILVER.src==="cache"?" (cached copy)":""}`
+    ? `Silver odds upd ${new Date(SILVER.asOf).toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}${SILVER.src==="cache"?" (cached copy)":""}`
     : "Silver odds: pre-tournament";
   const stale = (silverChecked && !SILVER.teams) || (ageDays!=null && ageDays>3);
   const warn = stale ? ` <span class="pill" style="background:#3a3322;color:var(--gold)">⚠ odds stale${ageDays>3?` — ${Math.floor(ageDays)}d old`:""}</span>` : "";
