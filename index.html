@@ -116,15 +116,10 @@
   <div class="cols">
     <div>
       <div class="panel">
-        <h2><span>League standings</span>
-          <span class="tabs" id="metricTabs">
-            <button class="tab active" data-metric="proj">Expected</button>
-            <button class="tab" data-metric="likely">Likely</button>
-          </span>
-        </h2>
+        <h2>League standings <span class="small" style="margin:0">click a manager for breakdown</span></h2>
         <div id="standings"></div>
         <p class="small">Scoring: group win 3 · draw 1 · advance to KO +4 · each KO win +5 · winning the final +10 (5 win + 5 champion bonus). Third-place match is not scored.
-        <b>Expected</b> = mean final total from Silver Bulletin's live odds (banked points included). <b>Likely</b> = the median (50th-percentile) total — the typical outcome. They differ because the points distribution is right-skewed: a small chance of a deep tournament run drags the mean up, so a weak team's Expected can sit well above what it will most likely actually score. A manager's Likely is the median of their roster's combined distribution, so it won't equal the sum of the per-team Likely figures. "vs draft" (Expected view) compares to the pre-tournament expectation. If the odds feed is unreachable the page falls back to the last fetched copy, then to pre-tournament numbers (Likely needs live odds, so it's unavailable in that fallback).</p>
+        "Proj" = expected final total from Silver Bulletin's odds, which he republishes nightly after each matchday (banked points are included in his updated numbers). "vs draft" compares that to the pre-tournament expectation — whose draft is aging well. If the odds feed is unreachable the page falls back to the last fetched copy, then to pre-tournament numbers (see the header note for which is in use).</p>
       </div>
       <div class="panel">
         <h2><span>Matches</span>
@@ -331,8 +326,7 @@ async function loadSilver(){
       const c=r[iC], t=teams[c];
       if(!t) continue;
       const p=i=>+r[i]/100; // chart values are percentages
-      t.r32=p(i32); t.r16=p(i16); t.r8=p(i8); t.semi=p(iS); t.final=p(iF); t.champ=p(iCh);
-      t.kow=t.r16+t.r8+t.semi+t.final+t.champ;
+      t.r32=p(i32); t.kow=p(i16)+p(i8)+p(iS)+p(iF)+p(iCh); t.champ=p(iCh);
       t.ev = t.gExp + 4*t.r32 + 5*t.kow + 5*t.champ;
     }
     const complete = Object.fromEntries(Object.entries(teams).filter(([,t])=>t.ev!=null && isFinite(t.ev)));
@@ -351,36 +345,6 @@ async function loadSilver(){
 
 // Live expected final total for a team; pre-tournament EV when no fresh data
 const evFor = code => (SILVER.teams && SILVER.teams[code]) ? SILVER.teams[code].ev : BY_CODE[code].preEV;
-
-// --- "Likely" (median) totals ----------------------------------------------
-// The knockout marginals are nested survival probabilities, so a team's
-// knockout-points distribution is exact. Points: advance +4, each KO win +5
-// (up to 5), champion +5 bonus → support {0,4,9,14,19,24,34}. Group points are
-// added as their mean (gExp): bounded 0–9, low skew — the right-skew that
-// inflates the mean lives entirely in the knockout tail.
-function koDist(t){
-  const c0=x=>x>0?x:0;
-  const a=t.r32, b=t.r16, c=t.r8, d=t.semi, e=t.final, f=t.champ;
-  return [[0,c0(1-a)],[4,c0(a-b)],[9,c0(b-c)],[14,c0(c-d)],[19,c0(d-e)],[24,c0(e-f)],[34,c0(f)]];
-}
-function pctl(dist, q){ let cum=0; for(const [pts,p] of dist){ cum+=p; if(cum>=q) return pts; } return dist[dist.length-1][0]; }
-const hasMarg = code => SILVER.teams && SILVER.teams[code] && SILVER.teams[code].r16!=null;
-// per-team median final total = group mean + median knockout points
-function likelyFor(code){ return hasMarg(code) ? SILVER.teams[code].gExp + pctl(koDist(SILVER.teams[code]),0.5) : null; }
-// roster median = median of the SUMMED distribution (convolve KO dists, offset
-// by Σ group means). NOT the sum of per-team medians.
-function rosterLikely(codes){
-  if(!SILVER.teams) return null;
-  let dist=[[0,1]], groupSum=0;
-  for(const code of codes){
-    if(!hasMarg(code)) return null;
-    const t=SILVER.teams[code]; groupSum+=t.gExp;
-    const kd=koDist(t), next=new Map();
-    for(const [p1,pr1] of dist) for(const [p2,pr2] of kd){ const k=p1+p2; next.set(k,(next.get(k)||0)+pr1*pr2); }
-    dist=[...next.entries()].sort((x,y)=>x[0]-y[0]);
-  }
-  return groupSum + pctl(dist,0.5);
-}
 
 // ============================================================================
 // Data load
@@ -570,7 +534,6 @@ function followedCodes(){
 // Render
 // ============================================================================
 let activeTab = "upcoming";
-let metric = "proj"; // "proj" = expected (mean) · "likely" = median
 let expanded = new Set();
 
 const ownerChip = code => {
@@ -698,22 +661,15 @@ function render(){
     return {mgr,
       pts:  codes.reduce((s,c)=>s+T[c].pts,0),
       preEV:codes.reduce((s,c)=>s+BY_CODE[c].preEV,0),
-      proj: codes.reduce((s,c)=>s+evFor(c),0),
-      likely: rosterLikely(codes)};
-  });
-  // Likely needs live Silver marginals; fall back to Expected if unavailable.
-  const likelyAvail = totals.every(t=>t.likely!=null);
-  const activeMetric = (metric==="likely" && likelyAvail) ? "likely" : "proj";
-  const mVal = row => activeMetric==="likely" ? row.likely : row.proj;
-  const mLabel = activeMetric==="likely" ? "likely" : "proj";
-  totals.sort((a,b)=>b.pts-a.pts || mVal(b)-mVal(a));
+      proj: codes.reduce((s,c)=>s+evFor(c),0)};
+  }).sort((a,b)=>b.pts-a.pts || b.proj-a.proj);
   const myIdx = totals.findIndex(x=>x.mgr.name===prefs.manager);
-  const leader = [...totals].sort((a,b)=>mVal(b)-mVal(a))[0];
+  const projLeader = [...totals].sort((a,b)=>b.proj-a.proj)[0];
   const todays = ms.filter(m=>{const k=kickoff(m); return k && k.toDateString()===now.toDateString();});
   document.getElementById("topbar").innerHTML = `
-    <div class="stat you"><div class="label">${MGR[prefs.manager].short}'s points</div><div class="value">${totals[myIdx].pts} <span style="font-size:.75rem;color:var(--muted)">(#${myIdx+1}) · ${mLabel} ${mVal(totals[myIdx]).toFixed(1)}</span></div></div>
+    <div class="stat you"><div class="label">${MGR[prefs.manager].short}'s points</div><div class="value">${totals[myIdx].pts} <span style="font-size:.75rem;color:var(--muted)">(#${myIdx+1}) · proj ${totals[myIdx].proj.toFixed(1)}</span></div></div>
     <div class="stat"><div class="label">Leader</div><div class="value">${totals[0].mgr.short} · ${totals[0].pts}</div></div>
-    <div class="stat"><div class="label">${activeMetric==="likely"?"Likeliest leader":"Projected winner"}</div><div class="value">${leader.mgr.short} · ${mVal(leader).toFixed(1)}</div></div>
+    <div class="stat"><div class="label">Projected winner</div><div class="value">${projLeader.mgr.short} · ${projLeader.proj.toFixed(1)}</div></div>
     <div class="stat"><div class="label">Games today</div><div class="value">${todays.length}</div></div>
     <div class="stat"><div class="label">Results in</div><div class="value">${ms.filter(m=>finalScore(m)).length} / 104</div></div>`;
 
@@ -722,15 +678,12 @@ function render(){
     const codes=(ROSTERS[row.mgr.name]||[]).slice().sort((a,b)=>T[b].pts-T[a].pts || evFor(b)-evFor(a));
     const isYou=row.mgr.name===prefs.manager, open=expanded.has(row.mgr.name);
     const delta=row.proj-row.preEV;
-    const projTxt = activeMetric==="likely"
-      ? `likely ${row.likely.toFixed(1)}`
-      : `proj ${row.proj.toFixed(1)} <span style="color:${delta>=0?"var(--green)":"var(--red)"}">(${delta>=0?"+":""}${delta.toFixed(1)} vs draft)</span>`;
     return `<div class="mgr-row ${isYou?"you-row":""} ${open?"open":""}" data-mgr="${row.mgr.name}">
-      <div class="top"><span>#${i+1} <span style="color:${row.mgr.color}">${isYou?"⭐ ":""}${row.mgr.name}</span></span><span class="pts">${row.pts} <span style="font-size:.7rem;color:var(--muted)">${projTxt}</span></span></div>
+      <div class="top"><span>#${i+1} <span style="color:${row.mgr.color}">${isYou?"⭐ ":""}${row.mgr.name}</span></span><span class="pts">${row.pts} <span style="font-size:.7rem;color:var(--muted)">proj ${row.proj.toFixed(1)} <span style="color:${delta>=0?"var(--green)":"var(--red)"}">(${delta>=0?"+":""}${delta.toFixed(1)} vs draft)</span></span></span></div>
       <div class="teams">${codes.map(c=>`${BY_CODE[c].flag} ${c} ${T[c].pts}`).join(" · ")}</div>
       <div class="detail"><table>
-        <tr><th>Team</th><th>Grp pts</th><th>W-D-L</th><th>Adv</th><th>KO wins</th><th>Banked</th><th>Exp</th><th>Likely</th></tr>
-        ${codes.map(c=>{const t=T[c]; const lk=likelyFor(c); return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":"—"}</td><td>${t.koWins.length?t.koWins.map(r=>r==="Final"?"F(+10)":"+5").join(" "):"—"}</td><td><b>${t.pts}</b></td><td style="color:var(--muted)">${evFor(c).toFixed(1)}</td><td style="color:var(--muted)">${lk!=null?lk.toFixed(1):"—"}</td></tr>`;}).join("")}
+        <tr><th>Team</th><th>Grp pts</th><th>W-D-L</th><th>Adv</th><th>KO wins</th><th>Banked</th><th>Proj</th></tr>
+        ${codes.map(c=>{const t=T[c];return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":"—"}</td><td>${t.koWins.length?t.koWins.map(r=>r==="Final"?"F(+10)":"+5").join(" "):"—"}</td><td><b>${t.pts}</b></td><td style="color:var(--muted)">${evFor(c).toFixed(1)}</td></tr>`;}).join("")}
       </table></div>
     </div>`;
   }).join("");
@@ -797,14 +750,9 @@ document.getElementById("extraChips").addEventListener("click", e=>{
   const c=e.target.dataset.rm; if(!c) return;
   prefs.extra=prefs.extra.filter(x=>x!==c); savePrefs(); render();
 });
-document.querySelectorAll(".tab[data-tab]").forEach(b=>b.addEventListener("click", ()=>{
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click", ()=>{
   activeTab=b.dataset.tab;
-  document.querySelectorAll(".tab[data-tab]").forEach(x=>x.classList.toggle("active",x===b));
-  render();
-}));
-document.querySelectorAll(".tab[data-metric]").forEach(b=>b.addEventListener("click", ()=>{
-  metric=b.dataset.metric;
-  document.querySelectorAll(".tab[data-metric]").forEach(x=>x.classList.toggle("active",x===b));
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===b));
   render();
 }));
 function refreshAll(){ loadData(); loadSilver(); loadESPN(true); }

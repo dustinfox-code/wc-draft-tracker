@@ -20,10 +20,8 @@ Live results, league standings, and a "which game do I watch next" banner for an
   Renders standings, group tables, schedule, and a next-match countdown for
   whichever manager's teams (plus any extra teams) the viewer follows.
 
-  Standings show a **live projected final total** per manager, toggleable
-  between **Expected** (mean) and **Likely** (median — strips the right-skewed
-  deep-run tail that inflates the mean for weak teams). Silver
-  Bulletin republishes his Datawrapper charts after games, and
+  Standings also show a **live projected final total** per manager: Silver
+  Bulletin republishes his Datawrapper charts nightly after each matchday, and
   their data is served from a public CDN (chart ids `1oPAd`/`EodNy`/`ArtIj`
   for group expectations, `JRO90` for the knockout ladder). The page fetches
   those CSVs at view time and runs them through the league scoring formula —
