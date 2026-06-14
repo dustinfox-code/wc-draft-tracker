@@ -42,6 +42,9 @@
   .panel h2{font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px}
   .btn{background:var(--track);color:var(--text);border:none;border-radius:8px;padding:6px 12px;font-size:.78rem;cursor:pointer;font-weight:600}
   .btn:hover{background:#34414f}
+  .ref-ico{display:inline-block}
+  .btn.spinning .ref-ico{animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
   .mgr-row{background:var(--card2);border-radius:10px;padding:9px 12px;margin-bottom:7px;cursor:pointer}
   .mgr-row .top{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:.9rem}
   .mgr-row .top .pts{color:var(--green);font-size:1.05rem}
@@ -95,7 +98,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>⚽ 2026 World Cup Draft League <span class="pill">live results</span> <span class="updated" id="updated"></span> <button class="btn" id="refreshBtn" style="margin-left:auto">↻ Refresh</button></h1>
+  <h1>⚽ 2026 World Cup Draft League <span class="pill">live results</span> <span class="updated" id="updated"></span> <button class="btn" id="refreshBtn" style="margin-left:auto"><span class="ref-ico">↻</span> Refresh</button></h1>
 
   <div class="nowbar" id="nowbar"></div>
 
@@ -755,7 +758,14 @@ document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click", ()=>{
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===b));
   render();
 }));
-function refreshAll(){ loadData(); loadSilver(); loadESPN(true); }
+let refreshing = 0;
+async function refreshAll(){
+  const btn = document.getElementById("refreshBtn");
+  refreshing++; btn.classList.add("spinning");
+  const minSpin = new Promise(r=>setTimeout(r, 600));   // ensure the spin is visible even on a fast refresh
+  try{ await Promise.allSettled([loadData(), loadSilver(), loadESPN(true)]); }
+  finally{ await minSpin; if(--refreshing===0) btn.classList.remove("spinning"); }
+}
 document.getElementById("refreshBtn").addEventListener("click", refreshAll);
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) refreshAll(); });
 setInterval(refreshAll, 10*60000);            // feeds + odds + full ESPN sweep every 10 min
