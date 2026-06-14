@@ -132,7 +132,7 @@
       <div class="panel">
         <h2>About</h2>
         <p class="small">
-          Scores come from ESPN's public scoreboard within minutes of full time (including live in-game scores), overlaid on the canonical schedule/bracket from the <a href="https://github.com/upbound-web/worldcup-live.json">community mirror</a> / <a href="https://github.com/openfootball/worldcup.json">openfootball feed</a> (whichever has more completed results — the header shows which). No manual entry needed. Live scores poll every 2 minutes, everything else every 10.<br>
+          Scores come from ESPN's public scoreboard within minutes of full time (including live in-game scores), overlaid on the canonical schedule/bracket from the <a href="https://github.com/upbound-web/worldcup-live.json">community mirror</a> / <a href="https://github.com/openfootball/worldcup.json">openfootball feed</a> (whichever has more completed results — the header shows which). No manual entry needed. Live scores poll every 30 seconds, everything else every 10 minutes.<br>
           Draft happened 2026-06-10. The pre-tournament <a href="draft.html">draft board &amp; simulator</a> is preserved here.
         </p>
       </div>
@@ -708,7 +708,7 @@ function refreshAll(){ loadData(); loadSilver(); loadESPN(true); }
 document.getElementById("refreshBtn").addEventListener("click", refreshAll);
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) refreshAll(); });
 setInterval(refreshAll, 10*60000);            // feeds + odds + full ESPN sweep every 10 min
-setInterval(()=>loadESPN(false), 2*60000);    // quick ESPN poll (±1 day) for live scores
+setInterval(()=>loadESPN(false), 30000);      // quick ESPN poll (±1 day) for live scores
 setInterval(render, 30000);                   // tick the countdown every 30 s
 refreshAll();
 </script>
