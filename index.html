@@ -80,11 +80,24 @@
   .tabs{display:flex;gap:6px;margin-bottom:8px}
   .tab{background:var(--track);border:none;color:var(--muted);border-radius:8px;padding:5px 12px;font-size:.76rem;cursor:pointer;font-weight:600}
   .tab.active{background:var(--accent);color:#fff}
+  .nowbar{border-radius:14px;padding:12px 16px;margin-bottom:12px;background:var(--card);border:1px solid #1f3a5c}
+  .nowbar.islive{background:linear-gradient(110deg,#2a1c1f,var(--card));border-color:#5a2c33}
+  .nowbar .nb-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--accent);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+  .nowbar.islive .nb-label{color:var(--red)}
+  .nowbar .nb-game{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:3px 0}
+  .nowbar .nb-game + .nb-game{border-top:1px solid #ffffff14;margin-top:6px;padding-top:9px}
+  .nowbar .nb-match{font-size:1.2rem;font-weight:800;flex:1;min-width:240px}
+  .nowbar .nb-score{font-size:1.45rem;font-weight:800;color:var(--green);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .nowbar .nb-score .clk{display:block;font-size:.62rem;color:var(--red);font-weight:700;text-align:right}
+  .nowbar .nb-when{font-size:1.05rem;font-weight:700;color:var(--accent);white-space:nowrap}
+  .nowbar .nb-meta{color:var(--muted);font-size:.82rem;margin-top:3px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>⚽ 2026 World Cup Draft League <span class="pill">live results</span> <span class="updated" id="updated"></span> <button class="btn" id="refreshBtn" style="margin-left:auto">↻ Refresh</button></h1>
+
+  <div class="nowbar" id="nowbar"></div>
 
   <div class="hero">
     <div class="hero-head">
@@ -569,6 +582,44 @@ function render(){
   const stale = (silverChecked && !SILVER.teams) || (ageDays!=null && ageDays>3);
   const warn = stale ? ` <span class="pill" style="background:#3a3322;color:var(--gold)">⚠ odds stale${ageDays>3?` — ${Math.floor(ageDays)}d old`:""}</span>` : "";
   document.getElementById("updated").innerHTML = DATA ? `results: ${LOADED_FROM} · ${silverNote}${warn} · rendered ${fmtTime(now)}` : "loading…";
+
+  // --- "On now / Up next" — global, ignores the follow selection
+  const nbName = (c,raw)=> c ? `${BY_CODE[c].flag} ${BY_CODE[c].name} ${ownerChip(c)}` : `<span style="color:var(--muted)">${tname(raw)}</span>`;
+  const nb = document.getElementById("nowbar");
+  const nbLive = ms.filter(m=>{
+    const st=status(m,now);
+    if(st==="live") return true;
+    if(st==="await"){ const k=kickoff(m); return k && (now-k) < 210*60000; } // ET/pens/result-lag tail
+    return false;
+  }).sort((a,b)=>kickoff(a)-kickoff(b));
+  const nbNext = nbLive.length ? [] : ms.filter(m=>status(m,now)==="up").sort((a,b)=>kickoff(a)-kickoff(b)).slice(0,1);
+  if(!DATA){
+    nb.className="nowbar"; nb.innerHTML=`<div class="nb-label">Schedule</div><div class="nb-meta">Loading…</div>`;
+  } else if(nbLive.length){
+    nb.className="nowbar islive";
+    nb.innerHTML = `<div class="nb-label"><span class="pill live">LIVE</span> Happening now</div>` +
+      nbLive.map(m=>{
+        const c1=tcode(m.team1), c2=tcode(m.team2);
+        const score = m._live
+          ? `<div class="nb-score">${m._live.s[0]}–${m._live.s[1]}<span class="clk">${m._live.detail||"LIVE"}</span></div>`
+          : `<div class="nb-when" style="color:var(--red)">in progress</div>`;
+        return `<div class="nb-game">
+          <div class="nb-match">${nbName(c1,m.team1)} <span style="color:var(--muted)">vs</span> ${nbName(c2,m.team2)}
+            <div class="nb-meta">${m.group||m.round} · ${m.ground||""}</div></div>
+          ${score}</div>`;
+      }).join("");
+  } else if(nbNext.length){
+    const m=nbNext[0], c1=tcode(m.team1), c2=tcode(m.team2), k=kickoff(m);
+    nb.className="nowbar";
+    nb.innerHTML = `<div class="nb-label">Up next</div>
+      <div class="nb-game">
+        <div class="nb-match">${nbName(c1,m.team1)} <span style="color:var(--muted)">vs</span> ${nbName(c2,m.team2)}
+          <div class="nb-meta">${m.group||m.round} · ${m.ground||""} · ${k?`${fmtDay(k)} ${fmtTime(k)} your time`:""}</div></div>
+        <div class="nb-when">${k?`in ${countdownStr(k-now)}`:""}</div>
+      </div>`;
+  } else {
+    nb.className="nowbar"; nb.innerHTML=`<div class="nb-label">Schedule</div><div class="nb-meta">No matches scheduled.</div>`;
+  }
 
   // --- hero: next matches for the followed selection
   const involves = (m,set)=>{const c1=tcode(m.team1),c2=tcode(m.team2);return (c1&&set.has(c1))||(c2&&set.has(c2));};
