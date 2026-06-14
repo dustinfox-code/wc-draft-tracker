@@ -577,11 +577,11 @@ function render(){
 
   const ageDays = SILVER.asOf ? (now - new Date(SILVER.asOf))/86400000 : null;
   const silverNote = SILVER.teams
-    ? `Silver odds upd ${new Date(SILVER.asOf).toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}${SILVER.src==="cache"?" (cached copy)":""}`
-    : "Silver odds: pre-tournament";
+    ? `odds ${new Date(SILVER.asOf).toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}${SILVER.src==="cache"?" (cached)":""}`
+    : "odds: pre-tourn";
   const stale = (silverChecked && !SILVER.teams) || (ageDays!=null && ageDays>3);
-  const warn = stale ? ` <span class="pill" style="background:#3a3322;color:var(--gold)">⚠ odds stale${ageDays>3?` — ${Math.floor(ageDays)}d old`:""}</span>` : "";
-  document.getElementById("updated").innerHTML = DATA ? `results: ${LOADED_FROM} · ${silverNote}${warn} · rendered ${fmtTime(now)}` : "loading…";
+  const warn = stale ? ` <span class="pill" style="background:#3a3322;color:var(--gold)">⚠ stale${ageDays>3?` ${Math.floor(ageDays)}d`:""}</span>` : "";
+  document.getElementById("updated").innerHTML = DATA ? `${LOADED_FROM} · ${silverNote}${warn} · upd ${fmtTime(now)}` : "loading…";
 
   // --- "On now / Up next" — global, ignores the follow selection
   const nbName = (c,raw)=> c ? `${BY_CODE[c].flag} ${BY_CODE[c].name} ${ownerChip(c)}` : `<span style="color:var(--muted)">${tname(raw)}</span>`;
