@@ -63,6 +63,10 @@
   .match-row .t .nm{font-weight:600}
   .match-row .score{min-width:64px;text-align:center;font-weight:800}
   .match-row .score .note{display:block;font-size:.6rem;color:var(--muted);font-weight:400}
+  a.sofa{color:inherit;text-decoration:none;cursor:pointer}
+  a.sofa:hover{color:var(--text)}
+  a.sofa:hover .sofa-ico{opacity:1;color:var(--gold)}
+  .sofa-ico{font-size:.6rem;color:var(--muted);vertical-align:super;margin-left:1px;opacity:.55}
   .match-row .when{min-width:84px;text-align:right;color:var(--muted);font-size:.72rem;line-height:1.3}
   .match-row.followed{background:linear-gradient(90deg,#26321f33,transparent);border-left:2px solid var(--gold);padding-left:8px}
   .datehead{color:var(--muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;margin:12px 0 2px;font-weight:700}
@@ -149,6 +153,7 @@
         <h2>About</h2>
         <p class="small">
           Scores come from ESPN's public scoreboard within minutes of full time (including live in-game scores), overlaid on the canonical schedule/bracket from the <a href="https://github.com/upbound-web/worldcup-live.json">community mirror</a> / <a href="https://github.com/openfootball/worldcup.json">openfootball feed</a> (whichever has more completed results — the header shows which). No manual entry needed. Live scores poll every 30 seconds, everything else every 10 minutes.<br>
+          A live or finished score with a small ↗ links to that match on <a href="https://www.sofascore.com">Sofascore</a> (opens in a new tab) for full live + post-match stats — xG, shots, momentum.<br>
           Draft happened 2026-06-10. The pre-tournament <a href="draft.html">draft board &amp; simulator</a> is preserved here.
         </p>
       </div>
@@ -447,6 +452,32 @@ function applyESPN(){
 }
 
 // ============================================================================
+// Sofascore deep links — full live + post-match stats per game
+// Sofascore's API is Cloudflare-gated with no CORS, so the browser can't read
+// it; instead scripts/harvest-sofascore.mjs (run from a residential IP) writes
+// data/sofascore.json mapping each fixture to its match-page URL. We match the
+// same way as ESPN: both team codes present + kickoff within a day. Best-effort
+// — if the file is absent or empty, scores just render without a link.
+// ============================================================================
+let SOFA = []; // [{c:[code,code], ts:epochMs, url}]
+async function loadSofascore(){
+  try{
+    const r = await fetch("data/sofascore.json?t=" + Math.floor(Date.now()/600000), {cache:"no-store"});
+    if(!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    if(Array.isArray(d.events)) SOFA = d.events;
+  }catch(e){ /* links are optional; page still renders */ }
+  render();
+}
+function sofaUrl(m){
+  if(!SOFA.length) return null;
+  const c1=tcode(m.team1), c2=tcode(m.team2), k=kickoff(m);
+  if(!c1 || !c2 || !k) return null;
+  const e = SOFA.find(e=>e.c.includes(c1) && e.c.includes(c2) && Math.abs(e.ts-k) < 36*3600000);
+  return e ? e.url : null;
+}
+
+// ============================================================================
 // Match helpers
 // ============================================================================
 const KO_ROUNDS = {"Round of 32":5,"Round of 16":5,"Quarter-final":5,"Semi-final":5,"Final":10};
@@ -563,9 +594,13 @@ function matchRow(m, now, followed){
             : st==="live" ? (m._live ? `${m._live.s[0]}–${m._live.s[1]}<span class="note" style="color:var(--red)">LIVE ${m._live.detail||""}</span>` : `<span class="pill live">LIVE</span>`)
             : st==="await" ? `<span class="note" style="font-size:.65rem;color:var(--muted)">awaiting<br>result</span>`
             : "vs";
+  const su = (st==="done"||st==="live"||st==="await") ? sofaUrl(m) : null;
+  const scoreCell = su
+    ? `<a class="sofa" href="${su}" target="_blank" rel="noopener" title="Live stats &amp; summary on Sofascore">${mid}<span class="sofa-ico">↗</span></a>`
+    : mid;
   return `<div class="match-row ${isF?"followed":""}">
     <span class="t t1">${nm(c1,m.team1)} ${c1?ownerChip(c1):""}</span>
-    <span class="score">${mid}</span>
+    <span class="score">${scoreCell}</span>
     <span class="t t2">${c2?ownerChip(c2):""} ${nm(c2,m.team2)}</span>
     <span class="when">${k?`${fmtDay(k)}<br>${fmtTime(k)}`:""}${m.group?`<br><span style="opacity:.7">${m.group.replace("Group ","Grp ")}</span>`:`<br><span style="opacity:.7">${m.round}</span>`}</span>
   </div>`;
@@ -602,10 +637,12 @@ function render(){
     nb.className="nowbar islive";
     nb.innerHTML = `<div class="nb-label"><span class="pill live">LIVE</span> Happening now</div>` +
       nbLive.map(m=>{
-        const c1=tcode(m.team1), c2=tcode(m.team2);
-        const score = m._live
-          ? `<div class="nb-score">${m._live.s[0]}–${m._live.s[1]}<span class="clk">${m._live.detail||"LIVE"}</span></div>`
-          : `<div class="nb-when" style="color:var(--red)">in progress</div>`;
+        const c1=tcode(m.team1), c2=tcode(m.team2), su=sofaUrl(m);
+        const arrow = su ? ` <span class="sofa-ico">↗</span>` : "";
+        const inner = m._live
+          ? `<div class="nb-score">${m._live.s[0]}–${m._live.s[1]}<span class="clk">${m._live.detail||"LIVE"}${arrow}</span></div>`
+          : `<div class="nb-when" style="color:var(--red)">in progress${arrow}</div>`;
+        const score = su ? `<a class="sofa" href="${su}" target="_blank" rel="noopener" title="Live stats on Sofascore">${inner}</a>` : inner;
         return `<div class="nb-game">
           <div class="nb-match">${nbName(c1,m.team1)} <span style="color:var(--muted)">vs</span> ${nbName(c2,m.team2)}
             <div class="nb-meta">${m.group||m.round} · ${m.ground||""}</div></div>
@@ -763,7 +800,7 @@ async function refreshAll(){
   const btn = document.getElementById("refreshBtn");
   refreshing++; btn.classList.add("spinning");
   const minSpin = new Promise(r=>setTimeout(r, 600));   // ensure the spin is visible even on a fast refresh
-  try{ await Promise.allSettled([loadData(), loadSilver(), loadESPN(true)]); }
+  try{ await Promise.allSettled([loadData(), loadSilver(), loadESPN(true), loadSofascore()]); }
   finally{ await minSpin; if(--refreshing===0) btn.classList.remove("spinning"); }
 }
 document.getElementById("refreshBtn").addEventListener("click", refreshAll);
