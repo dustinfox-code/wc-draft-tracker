@@ -48,6 +48,7 @@
   .mgr-row{background:var(--card2);border-radius:10px;padding:9px 12px;margin-bottom:7px;cursor:pointer}
   .mgr-row .top{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:.9rem}
   .mgr-row .top .pts{color:var(--green);font-size:1.05rem}
+  .unconf{color:var(--gold);border-bottom:1px dotted currentColor;cursor:help;font-weight:700}
   .mgr-row.you-row{outline:1px solid var(--gold)}
   .mgr-row .teams{color:var(--muted);font-size:.76rem;margin-top:4px;line-height:1.7}
   .mgr-row .detail{display:none;margin-top:8px;border-top:1px solid #2c3845;padding-top:6px}
@@ -78,6 +79,7 @@
   .gtable td:first-child,.gtable th:first-child{text-align:left}
   .gtable th{color:var(--muted);font-size:.6rem;text-transform:uppercase}
   .gtable tr.q td{color:var(--green)}
+  .gtable .lock{cursor:help;font-size:.7rem;margin-left:2px;vertical-align:middle}
   select,option{background:var(--card2);color:var(--text);border:1px solid var(--track);border-radius:8px;padding:5px 8px;font-size:.8rem}
   .chip{display:inline-flex;align-items:center;gap:4px;background:var(--card2);border-radius:8px;padding:2px 8px;font-size:.75rem;margin:2px 4px 2px 0}
   .chip button{background:none;border:none;color:var(--red);cursor:pointer;font-size:.8rem;padding:0}
@@ -126,6 +128,7 @@
         <h2>League standings <span class="small" style="margin:0">click a manager for breakdown</span></h2>
         <div id="standings"></div>
         <p class="small">Scoring: group win 3 · draw 1 · advance to KO +4 · each KO win +5 · winning the final +10 (5 win + 5 champion bonus). Third-place match is not scored.
+        A gold <span class="unconf">+N</span> = <b>unconfirmed</b> points: a knockout berth a team has mathematically clinched (the +4, via FIFA 2026 head-to-head-first tie-breakers) but that isn't banked yet because the bracket isn't seeded — it converts to banked points once the group stage resolves. Best-third-place clinches aren't pre-counted, and standings rank by banked points only.
         "Proj" = expected final total from Silver Bulletin's odds, which he republishes nightly after each matchday (banked points are included in his updated numbers). "vs draft" compares that to the pre-tournament expectation — whose draft is aging well. If the odds feed is unreachable the page falls back to the last fetched copy, then to pre-tournament numbers (see the header note for which is in use).</p>
       </div>
       <div class="panel">
@@ -524,7 +527,7 @@ function status(m, now){
 // Scoring engine — per-team actual points from match data
 // ============================================================================
 function computeScores(){
-  const T = {}; TEAMS.forEach(t=>T[t.code]={code:t.code, gPts:0, gW:0, gD:0, gL:0, gp:0, gf:0, ga:0, adv:false, koWins:[], pts:0, champion:false});
+  const T = {}; TEAMS.forEach(t=>T[t.code]={code:t.code, gPts:0, gW:0, gD:0, gL:0, gp:0, gf:0, ga:0, adv:false, koWins:[], pts:0, champion:false, clinchAdv:false, unconf:0});
   if(!DATA) return T;
   for(const m of DATA.matches){
     const c1=tcode(m.team1), c2=tcode(m.team2);
@@ -546,11 +549,78 @@ function computeScores(){
       }
     }
   }
+  const clinched = computeClinch();
   for(const c in T){
     const t=T[c];
     t.pts = t.gPts + (t.adv?4:0) + t.koWins.reduce((s,r)=>s+KO_ROUNDS[r],0);
+    t.clinchAdv = clinched.has(c);
+    t.unconf = (t.clinchAdv && !t.adv) ? 4 : 0; // clinched a KO berth, not yet banked
   }
   return T;
+}
+
+// ============================================================================
+// Clinch detection — teams that have MATHEMATICALLY secured a knockout berth
+// (a top-2 group finish) but haven't been credited the +4 yet because the feed
+// hasn't seeded the bracket. Uses the FIFA 2026 within-group tie-breakers, where
+// head-to-head (points, then GD, then goals among the level teams) is applied
+// BEFORE overall goal difference — the reverse of 2022. Group-local: it does not
+// compute best-third-place clinches (those resolve when the bracket fills in), so
+// a team that's only guaranteed via a best-third spot stays unmarked until then.
+// Brute-forces remaining group scorelines up to CLINCH_CAP goals/side and only
+// runs once ≤2 games remain in a group (no top-2 spot can lock earlier). Cached
+// on the set of finalized group scores so it recomputes only when a result lands.
+// ============================================================================
+const CLINCH_CAP = 9; // max goals/side per remaining match considered
+let _clinch = {sig:null, set:new Set()};
+function computeClinch(){
+  if(!DATA) return new Set();
+  const byG = {}; let sig = "";
+  for(const m of DATA.matches){
+    if(!m.group) continue;
+    const a=tcode(m.team1), b=tcode(m.team2); if(!a||!b) continue;
+    (byG[m.group] = byG[m.group] || {played:[], rem:[]});
+    const fs = finalScore(m);
+    if(fs){ byG[m.group].played.push({a,b,ga:fs[0],gb:fs[1]}); sig += `${m.group}${a}${fs[0]}-${fs[1]}${b};`; }
+    else byG[m.group].rem.push({a,b});
+  }
+  if(sig === _clinch.sig) return _clinch.set;
+  const set = new Set();
+  for(const g in byG){
+    const {played, rem} = byG[g];
+    if(rem.length > 2) continue; // nothing can lock a top-2 spot this early
+    const teams = TEAMS.filter(t=>"Group "+t.group===g).map(t=>t.code);
+    if(teams.length === 4) clinchTop2(teams, played, rem).forEach(c=>set.add(c));
+  }
+  _clinch = {sig, set};
+  return set;
+}
+
+// Teams guaranteed a top-2 finish across EVERY remaining-scoreline scenario.
+function clinchTop2(teams, played, rem){
+  const span = CLINCH_CAP+1, perMatch = span*span, total = Math.pow(perMatch, rem.length);
+  const miss = new Set();
+  for(let s=0; s<total; s++){
+    let x=s; const all=played.slice();
+    for(let i=0;i<rem.length;i++){ const cell=x%perMatch; x=(x/perMatch)|0; all.push({a:rem[i].a,b:rem[i].b,ga:(cell/span)|0,gb:cell%span}); }
+    const S={}; teams.forEach(c=>S[c]={pts:0,gf:0,ga:0});
+    for(const m of all){ S[m.a].gf+=m.ga;S[m.a].ga+=m.gb;S[m.b].gf+=m.gb;S[m.b].ga+=m.ga;
+      if(m.ga>m.gb)S[m.a].pts+=3; else if(m.ga<m.gb)S[m.b].pts+=3; else {S[m.a].pts++;S[m.b].pts++;} }
+    const h2h = tied => { const H={}; tied.forEach(c=>H[c]={pts:0,gf:0,ga:0});
+      for(const m of all) if(tied.includes(m.a)&&tied.includes(m.b)){ H[m.a].gf+=m.ga;H[m.a].ga+=m.gb;H[m.b].gf+=m.gb;H[m.b].ga+=m.ga;
+        if(m.ga>m.gb)H[m.a].pts+=3; else if(m.ga<m.gb)H[m.b].pts+=3; else {H[m.a].pts++;H[m.b].pts++;} } return H; };
+    const cmp=(a,b)=>{ if(S[a].pts!==S[b].pts) return S[b].pts-S[a].pts;
+      const H=h2h(teams.filter(z=>S[z].pts===S[a].pts));
+      if(H[a].pts!==H[b].pts) return H[b].pts-H[a].pts;
+      const ad=H[a].gf-H[a].ga, bd=H[b].gf-H[b].ga; if(ad!==bd) return bd-ad;
+      if(H[a].gf!==H[b].gf) return H[b].gf-H[a].gf;
+      const oa=S[a].gf-S[a].ga, ob=S[b].gf-S[b].ga; if(oa!==ob) return ob-oa;
+      return S[b].gf-S[a].gf; };
+    for(const X of teams) // worst case: anyone ranked above OR fully level could sit above X
+      if(teams.filter(z=>z!==X && cmp(z,X)<=0).length > 1) miss.add(X);
+    if(miss.size === teams.length) break; // no one can clinch — stop
+  }
+  return teams.filter(c=>!miss.has(c));
 }
 
 // ============================================================================
@@ -699,15 +769,17 @@ function render(){
   const totals = MANAGERS.map(mgr=>{
     const codes=ROSTERS[mgr.name]||[];
     return {mgr,
-      pts:  codes.reduce((s,c)=>s+T[c].pts,0),
-      preEV:codes.reduce((s,c)=>s+BY_CODE[c].preEV,0),
-      proj: codes.reduce((s,c)=>s+evFor(c),0)};
+      pts:   codes.reduce((s,c)=>s+T[c].pts,0),
+      unconf:codes.reduce((s,c)=>s+T[c].unconf,0),
+      preEV: codes.reduce((s,c)=>s+BY_CODE[c].preEV,0),
+      proj:  codes.reduce((s,c)=>s+evFor(c),0)};
   }).sort((a,b)=>b.pts-a.pts || b.proj-a.proj);
   const myIdx = totals.findIndex(x=>x.mgr.name===prefs.manager);
+  const uBadge = u => u ? ` <span class="unconf" title="Unconfirmed: mathematically clinched a knockout berth (+4) but not yet banked — converts when the bracket is seeded">+${u}</span>` : "";
   const projLeader = [...totals].sort((a,b)=>b.proj-a.proj)[0];
   const todays = ms.filter(m=>{const k=kickoff(m); return k && k.toDateString()===now.toDateString();});
   document.getElementById("topbar").innerHTML = `
-    <div class="stat you"><div class="label">${MGR[prefs.manager].short}'s points</div><div class="value">${totals[myIdx].pts} <span style="font-size:.75rem;color:var(--muted)">(#${myIdx+1}) · proj ${totals[myIdx].proj.toFixed(1)}</span></div></div>
+    <div class="stat you"><div class="label">${MGR[prefs.manager].short}'s points</div><div class="value">${totals[myIdx].pts}${uBadge(totals[myIdx].unconf)} <span style="font-size:.75rem;color:var(--muted)">(#${myIdx+1}) · proj ${totals[myIdx].proj.toFixed(1)}</span></div></div>
     <div class="stat"><div class="label">Leader</div><div class="value">${totals[0].mgr.short} · ${totals[0].pts}</div></div>
     <div class="stat"><div class="label">Projected winner</div><div class="value">${projLeader.mgr.short} · ${projLeader.proj.toFixed(1)}</div></div>
     <div class="stat"><div class="label">Games today</div><div class="value">${todays.length}</div></div>
@@ -719,11 +791,11 @@ function render(){
     const isYou=row.mgr.name===prefs.manager, open=expanded.has(row.mgr.name);
     const delta=row.proj-row.preEV;
     return `<div class="mgr-row ${isYou?"you-row":""} ${open?"open":""}" data-mgr="${row.mgr.name}">
-      <div class="top"><span>#${i+1} <span style="color:${row.mgr.color}">${isYou?"⭐ ":""}${row.mgr.name}</span></span><span class="pts">${row.pts} <span style="font-size:.7rem;color:var(--muted)">proj ${row.proj.toFixed(1)} <span style="color:${delta>=0?"var(--green)":"var(--red)"}">(${delta>=0?"+":""}${delta.toFixed(1)} vs draft)</span></span></span></div>
+      <div class="top"><span>#${i+1} <span style="color:${row.mgr.color}">${isYou?"⭐ ":""}${row.mgr.name}</span></span><span class="pts">${row.pts}${uBadge(row.unconf)} <span style="font-size:.7rem;color:var(--muted)">proj ${row.proj.toFixed(1)} <span style="color:${delta>=0?"var(--green)":"var(--red)"}">(${delta>=0?"+":""}${delta.toFixed(1)} vs draft)</span></span></span></div>
       <div class="teams">${codes.map(c=>`${BY_CODE[c].flag} ${c} ${T[c].pts}`).join(" · ")}</div>
       <div class="detail"><table>
         <tr><th>Team</th><th>Grp pts</th><th>W-D-L</th><th>Adv</th><th>KO wins</th><th>Banked</th><th>Proj</th></tr>
-        ${codes.map(c=>{const t=T[c];return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":"—"}</td><td>${t.koWins.length?t.koWins.map(r=>r==="Final"?"F(+10)":"+5").join(" "):"—"}</td><td><b>${t.pts}</b></td><td style="color:var(--muted)">${evFor(c).toFixed(1)}</td></tr>`;}).join("")}
+        ${codes.map(c=>{const t=T[c];return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":t.clinchAdv?`<span class="unconf" title="Clinched a knockout berth — +4 unconfirmed until the bracket is seeded">+4</span>`:"—"}</td><td>${t.koWins.length?t.koWins.map(r=>r==="Final"?"F(+10)":"+5").join(" "):"—"}</td><td><b>${t.pts}</b></td><td style="color:var(--muted)">${evFor(c).toFixed(1)}</td></tr>`;}).join("")}
       </table></div>
     </div>`;
   }).join("");
@@ -758,7 +830,7 @@ function render(){
     const rows=groups[g].map(c=>({c,...T[c]})).sort((a,b)=>b.gPts-a.gPts || (b.gf-b.ga)-(a.gf-a.ga) || b.gf-a.gf);
     return `<div class="gtable"><div class="gname">Group ${g}</div><table>
       <tr><th>Team</th><th>P</th><th>GD</th><th>Pts</th></tr>
-      ${rows.map((r,i)=>`<tr class="${i<2&&r.gp>0?"q":""}"><td>${BY_CODE[r.c].flag} ${BY_CODE[r.c].name} ${ownerChip(r.c)}</td><td>${r.gp}</td><td>${r.gf-r.ga}</td><td><b>${r.gPts}</b></td></tr>`).join("")}
+      ${rows.map((r,i)=>`<tr class="${i<2&&r.gp>0?"q":""}"><td>${BY_CODE[r.c].flag} ${BY_CODE[r.c].name}${r.clinchAdv?`<span class="lock" title="Clinched a knockout berth — top-2 secured (+4)">🔒</span>`:""} ${ownerChip(r.c)}</td><td>${r.gp}</td><td>${r.gf-r.ga}</td><td><b>${r.gPts}</b></td></tr>`).join("")}
     </table></div>`;
   }).join("");
 
