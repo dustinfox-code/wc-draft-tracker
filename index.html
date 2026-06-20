@@ -561,17 +561,26 @@ function computeScores(){
 
 // ============================================================================
 // Clinch detection — teams that have MATHEMATICALLY secured a knockout berth
-// (a top-2 group finish) but haven't been credited the +4 yet because the feed
-// hasn't seeded the bracket. Uses the FIFA 2026 within-group tie-breakers, where
-// head-to-head (points, then GD, then goals among the level teams) is applied
-// BEFORE overall goal difference — the reverse of 2022. Group-local: it does not
-// compute best-third-place clinches (those resolve when the bracket fills in), so
-// a team that's only guaranteed via a best-third spot stays unmarked until then.
-// Brute-forces remaining group scorelines up to CLINCH_CAP goals/side and only
-// runs once ≤2 games remain in a group (no top-2 spot can lock earlier). Cached
-// on the set of finalized group scores so it recomputes only when a result lands.
+// but haven't been credited the +4 yet because the feed hasn't seeded the
+// bracket. A berth is locked two ways, and we detect BOTH:
+//   1. Top-2 group finish — guaranteed across every remaining scoreline, using
+//      the FIFA 2026 within-group tie-breakers (head-to-head points, then GD,
+//      then goals among the level teams, applied BEFORE overall GD — the reverse
+//      of 2022). Resolvable only once ≤2 games remain in the group.
+//   2. Best third place — 8 of the 12 third-place teams also advance (top 2 ×12
+//      + 8 thirds = 32). A team guaranteed to finish ≥3rd is through if its third
+//      place can't be bumped out of the top 8. Since a 4-team group's third can
+//      score at most 6 pts (a 7-pt third needs 21 pts among the top 3 > 18 max),
+//      a guaranteed-3rd team on P pts is safe when ≤7 OTHER groups can field a
+//      third reaching ≥P pts. This is what makes the USA (6 pts, can't drop below
+//      3rd) clinch before locking top-2 — exactly what ESPN/Silver report.
+// The best-third test is points-only and conservative (treats every point-tie as
+// against the team), so it never over-claims; clinchTop2 layers in the exact,
+// goal-tie-broken top-2 cases on top. Cached on the set of finalized group scores
+// so it recomputes only when a result lands.
 // ============================================================================
-const CLINCH_CAP = 9; // max goals/side per remaining match considered
+const CLINCH_CAP = 9;  // max goals/side per remaining match considered (top-2 test)
+const BEST_THIRDS = 8; // third-place teams that advance to the Round of 32
 let _clinch = {sig:null, set:new Set()};
 function computeClinch(){
   if(!DATA) return new Set();
@@ -585,12 +594,22 @@ function computeClinch(){
     else byG[m.group].rem.push({a,b});
   }
   if(sig === _clinch.sig) return _clinch.set;
+  const groupTeams = g => TEAMS.filter(t=>"Group "+t.group===g).map(t=>t.code);
+  // Highest points a group's eventual third-place team can still reach (per group).
+  const maxThird = {};
+  for(const g in byG){ const teams = groupTeams(g);
+    if(teams.length === 4) maxThird[g] = maxThirdPts(teams, byG[g].played, byG[g].rem); }
   const set = new Set();
   for(const g in byG){
     const {played, rem} = byG[g];
-    if(rem.length > 2) continue; // nothing can lock a top-2 spot this early
-    const teams = TEAMS.filter(t=>"Group "+t.group===g).map(t=>t.code);
-    if(teams.length === 4) clinchTop2(teams, played, rem).forEach(c=>set.add(c));
+    const teams = groupTeams(g); if(teams.length !== 4) continue;
+    // (1) top-2 lock — only resolvable once ≤2 games remain in the group
+    if(rem.length <= 2) clinchTop2(teams, played, rem).forEach(c=>set.add(c));
+    // (2) berth lock (top-2 or guaranteed best-third) — possible a game earlier
+    if(rem.length <= 3){
+      const competitorsGE = P => Object.keys(maxThird).filter(o=>o!==g && maxThird[o]>=P).length;
+      clinchBerth(teams, played, rem, competitorsGE).forEach(c=>set.add(c));
+    }
   }
   _clinch = {sig, set};
   return set;
@@ -619,6 +638,55 @@ function clinchTop2(teams, played, rem){
     for(const X of teams) // worst case: anyone ranked above OR fully level could sit above X
       if(teams.filter(z=>z!==X && cmp(z,X)<=0).length > 1) miss.add(X);
     if(miss.size === teams.length) break; // no one can clinch — stop
+  }
+  return teams.filter(c=>!miss.has(c));
+}
+
+// Highest points the eventual third-place team can reach (over every remaining
+// win/draw/loss combo — goals are irrelevant to a points ceiling, so this stays
+// cheap at 3^rem). Capped at 6: a 4-team group can't produce a 7-pt third.
+function maxThirdPts(teams, played, rem){
+  const base = {}; teams.forEach(c=>base[c]=0);
+  for(const m of played){ if(m.ga>m.gb)base[m.a]+=3; else if(m.ga<m.gb)base[m.b]+=3; else {base[m.a]++;base[m.b]++;} }
+  const total = Math.pow(3, rem.length); let best = 0;
+  for(let s=0; s<total; s++){
+    let x=s; const pts=Object.assign({}, base);
+    for(let i=0;i<rem.length;i++){ const o=x%3; x=(x/3)|0;
+      if(o===0)pts[rem[i].a]+=3; else if(o===1)pts[rem[i].b]+=3; else {pts[rem[i].a]++;pts[rem[i].b]++;} }
+    const ranked = teams.map(c=>pts[c]).sort((p,q)=>q-p);
+    if(ranked[2] > best) best = ranked[2];
+    if(best >= 6) return 6;
+  }
+  return best;
+}
+
+// Teams that have clinched a knockout berth — guaranteed across EVERY remaining
+// win/draw/loss combo to finish either top-2 OR third with a points total that
+// can't fall outside the 8 best thirds. Points-only and conservative: every
+// point-tie is counted against the team, so it never over-claims (clinchTop2
+// adds the goal-tie-broken top-2 cases). competitorsGE(P) = how many OTHER groups
+// can still field a third-place team reaching ≥P points.
+function clinchBerth(teams, played, rem, competitorsGE){
+  const base = {}; teams.forEach(c=>base[c]=0);
+  for(const m of played){ if(m.ga>m.gb)base[m.a]+=3; else if(m.ga<m.gb)base[m.b]+=3; else {base[m.a]++;base[m.b]++;} }
+  const total = Math.pow(3, rem.length); const miss = new Set();
+  for(let s=0; s<total; s++){
+    let x=s; const pts=Object.assign({}, base);
+    for(let i=0;i<rem.length;i++){ const o=x%3; x=(x/3)|0;
+      if(o===0)pts[rem[i].a]+=3; else if(o===1)pts[rem[i].b]+=3; else {pts[rem[i].a]++;pts[rem[i].b]++;} }
+    for(const X of teams){
+      if(miss.has(X)) continue;
+      const P = pts[X];
+      const above = teams.filter(z=>z!==X && pts[z] >  P).length;
+      const level = teams.filter(z=>z!==X && pts[z] === P).length;
+      const worstRank = above + level + 1; // worst case: every level team sits above X
+      let safe;
+      if(worstRank <= 2) safe = true;                                   // can't drop below 2nd
+      else if(worstRank === 3) safe = competitorsGE(P) <= BEST_THIRDS-1; // 3rd, but a top-8 third
+      else safe = false;                                                // could fall to 4th
+      if(!safe) miss.add(X);
+    }
+    if(miss.size === teams.length) break;
   }
   return teams.filter(c=>!miss.has(c));
 }
@@ -830,7 +898,7 @@ function render(){
     const rows=groups[g].map(c=>({c,...T[c]})).sort((a,b)=>b.gPts-a.gPts || (b.gf-b.ga)-(a.gf-a.ga) || b.gf-a.gf);
     return `<div class="gtable"><div class="gname">Group ${g}</div><table>
       <tr><th>Team</th><th>P</th><th>GD</th><th>Pts</th></tr>
-      ${rows.map((r,i)=>`<tr class="${i<2&&r.gp>0?"q":""}"><td>${BY_CODE[r.c].flag} ${BY_CODE[r.c].name}${r.clinchAdv?`<span class="lock" title="Clinched a knockout berth — top-2 secured (+4)">🔒</span>`:""} ${ownerChip(r.c)}</td><td>${r.gp}</td><td>${r.gf-r.ga}</td><td><b>${r.gPts}</b></td></tr>`).join("")}
+      ${rows.map((r,i)=>`<tr class="${i<2&&r.gp>0?"q":""}"><td>${BY_CODE[r.c].flag} ${BY_CODE[r.c].name}${r.clinchAdv?`<span class="lock" title="Clinched a knockout berth — top-2 or guaranteed best-third (+4)">🔒</span>`:""} ${ownerChip(r.c)}</td><td>${r.gp}</td><td>${r.gf-r.ga}</td><td><b>${r.gPts}</b></td></tr>`).join("")}
     </table></div>`;
   }).join("");
 
