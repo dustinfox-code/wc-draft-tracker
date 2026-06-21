@@ -563,10 +563,10 @@ function computeScores(){
 // Clinch detection — teams that have MATHEMATICALLY secured a knockout berth
 // but haven't been credited the +4 yet because the feed hasn't seeded the
 // bracket. A berth is locked two ways, and we detect BOTH:
-//   1. Top-2 group finish — guaranteed across every remaining scoreline, using
-//      the FIFA 2026 within-group tie-breakers (head-to-head points, then GD,
-//      then goals among the level teams, applied BEFORE overall GD — the reverse
-//      of 2022). Resolvable only once ≤2 games remain in the group.
+//   1. Top-2 group finish — guaranteed across every remaining scoreline, ranked
+//      by the FIFA 2026 within-group tie-breakers (head-to-head first, and
+//      RE-APPLIED within a multi-way tie — see rankGroupBuckets below). Resolvable
+//      only once ≤2 games remain in the group.
 //   2. Best third place — 8 of the 12 third-place teams also advance (top 2 ×12
 //      + 8 thirds = 32). A team guaranteed to finish ≥3rd is through if its third
 //      place can't be bumped out of the top 8. Since a 4-team group's third can
@@ -615,28 +615,67 @@ function computeClinch(){
   return set;
 }
 
-// Teams guaranteed a top-2 finish across EVERY remaining-scoreline scenario.
+// FIFA 2026 within-group ranking — head-to-head FIRST, WITH the re-apply rule.
+// When teams are level on points the order is, per the FIFA 2026 regulations (as
+// laid out by the BBC, 2026-06-19): (1) points in the matches among only the level
+// teams — a "mini-league" that for a 3-way tie drops the games against the 4th
+// team; (2) goal difference in those matches; (3) goals scored in them; and
+// crucially, if (1)-(3) separate SOME but not all teams, they are RE-APPLIED to
+// whoever is still level (results against the now-separated teams dropped) before
+// falling to (4) overall goal difference and (5) overall goals. So head-to-head
+// keeps deciding the residual tie instead of leaking into overall GD too early —
+// the bug this replaces. (Fair play, then older FIFA ranking, come next, but we
+// can't see cards.) rankGroupBuckets returns buckets best→worst; each bucket holds
+// teams that nothing we can model separates (a genuine tie), so clinchTop2 can
+// treat a multi-team bucket conservatively.
+function leagueStats(group, matches){            // points/goals over matches WITHIN `group`
+  const S={}; group.forEach(c=>S[c]={pts:0,gf:0,ga:0});
+  for(const m of matches) if(S[m.a] && S[m.b]){
+    S[m.a].gf+=m.ga; S[m.a].ga+=m.gb; S[m.b].gf+=m.gb; S[m.b].ga+=m.ga;
+    if(m.ga>m.gb) S[m.a].pts+=3; else if(m.ga<m.gb) S[m.b].pts+=3; else { S[m.a].pts++; S[m.b].pts++; }
+  }
+  return S;
+}
+// Sort `items` by keyFn (a number, or an array compared left-to-right; higher is
+// better) and split into buckets of equal key, ordered best→worst.
+function bucketsByKey(items, keyFn){
+  const arr = items.map(c=>({c, k:[].concat(keyFn(c))}));
+  arr.sort((x,y)=>{ for(let i=0;i<x.k.length;i++) if(x.k[i]!==y.k[i]) return y.k[i]-x.k[i]; return 0; });
+  const out=[];
+  for(const {c,k} of arr){
+    const last=out[out.length-1];
+    if(last && last.k.every((v,i)=>v===k[i])) last.b.push(c); else out.push({k, b:[c]});
+  }
+  return out.map(o=>o.b);
+}
+function resolveLevel(block, matches, ov){       // order teams already tied on points
+  if(block.length===1) return [block];
+  const H = leagueStats(block, matches);                                  // mini-league among them
+  const hb = bucketsByKey(block, c=>[H[c].pts, H[c].gf-H[c].ga, H[c].gf]); // h2h pts → GD → goals
+  if(hb.length===1) return bucketsByKey(block, c=>[ov[c].gf-ov[c].ga, ov[c].gf]); // can't split → overall
+  return hb.flatMap(bk => resolveLevel(bk, matches, ov));                  // RE-APPLY to whoever's still level
+}
+function rankGroupBuckets(codes, matches){
+  const ov = leagueStats(codes, matches);                                 // overall: every game counts
+  return bucketsByKey(codes, c=>ov[c].pts).flatMap(block => resolveLevel(block, matches, ov));
+}
+const rankGroup = (codes, matches) => rankGroupBuckets(codes, matches).flat();
+
+// Teams guaranteed a top-2 finish across EVERY remaining-scoreline scenario,
+// ranked by the FIFA 2026 rules above. A team is safe only when the teams ranked
+// strictly above it PLUS its own (possibly multi-team, unresolved) tie bucket
+// still fit inside the top two — so a 3-way unbroken tie clinches nobody.
 function clinchTop2(teams, played, rem){
   const span = CLINCH_CAP+1, perMatch = span*span, total = Math.pow(perMatch, rem.length);
   const miss = new Set();
   for(let s=0; s<total; s++){
     let x=s; const all=played.slice();
     for(let i=0;i<rem.length;i++){ const cell=x%perMatch; x=(x/perMatch)|0; all.push({a:rem[i].a,b:rem[i].b,ga:(cell/span)|0,gb:cell%span}); }
-    const S={}; teams.forEach(c=>S[c]={pts:0,gf:0,ga:0});
-    for(const m of all){ S[m.a].gf+=m.ga;S[m.a].ga+=m.gb;S[m.b].gf+=m.gb;S[m.b].ga+=m.ga;
-      if(m.ga>m.gb)S[m.a].pts+=3; else if(m.ga<m.gb)S[m.b].pts+=3; else {S[m.a].pts++;S[m.b].pts++;} }
-    const h2h = tied => { const H={}; tied.forEach(c=>H[c]={pts:0,gf:0,ga:0});
-      for(const m of all) if(tied.includes(m.a)&&tied.includes(m.b)){ H[m.a].gf+=m.ga;H[m.a].ga+=m.gb;H[m.b].gf+=m.gb;H[m.b].ga+=m.ga;
-        if(m.ga>m.gb)H[m.a].pts+=3; else if(m.ga<m.gb)H[m.b].pts+=3; else {H[m.a].pts++;H[m.b].pts++;} } return H; };
-    const cmp=(a,b)=>{ if(S[a].pts!==S[b].pts) return S[b].pts-S[a].pts;
-      const H=h2h(teams.filter(z=>S[z].pts===S[a].pts));
-      if(H[a].pts!==H[b].pts) return H[b].pts-H[a].pts;
-      const ad=H[a].gf-H[a].ga, bd=H[b].gf-H[b].ga; if(ad!==bd) return bd-ad;
-      if(H[a].gf!==H[b].gf) return H[b].gf-H[a].gf;
-      const oa=S[a].gf-S[a].ga, ob=S[b].gf-S[b].ga; if(oa!==ob) return ob-oa;
-      return S[b].gf-S[a].gf; };
-    for(const X of teams) // worst case: anyone ranked above OR fully level could sit above X
-      if(teams.filter(z=>z!==X && cmp(z,X)<=0).length > 1) miss.add(X);
+    let above=0;
+    for(const bk of rankGroupBuckets(teams, all)){
+      if(above + bk.length > 2) bk.forEach(c=>miss.add(c)); // worst case: ranked last within an unresolved bucket
+      above += bk.length;
+    }
     if(miss.size === teams.length) break; // no one can clinch — stop
   }
   return teams.filter(c=>!miss.has(c));
@@ -891,11 +930,13 @@ function render(){
   document.getElementById("watchlist").innerHTML = future.slice(0,8).map(m=>matchRow(m,now,followed)).join("") ||
     `<p class="small">No upcoming matches for the selected teams.</p>`;
 
-  // --- groups
-  const groups={};
+  // --- groups (ordered by the same FIFA 2026 head-to-head ranking as the clinch logic)
+  const groups={}, gPlayed={};
   TEAMS.forEach(t=>{(groups[t.group]=groups[t.group]||[]).push(t.code)});
+  for(const m of ms){ if(!m.group) continue; const a=tcode(m.team1), b=tcode(m.team2), fs2=finalScore(m);
+    if(a&&b&&fs2) (gPlayed[m.group]=gPlayed[m.group]||[]).push({a,b,ga:fs2[0],gb:fs2[1]}); }
   document.getElementById("groups").innerHTML = Object.keys(groups).sort().map(g=>{
-    const rows=groups[g].map(c=>({c,...T[c]})).sort((a,b)=>b.gPts-a.gPts || (b.gf-b.ga)-(a.gf-a.ga) || b.gf-a.gf);
+    const rows=rankGroup(groups[g], gPlayed["Group "+g]||[]).map(c=>({c,...T[c]}));
     return `<div class="gtable"><div class="gname">Group ${g}</div><table>
       <tr><th>Team</th><th>P</th><th>GD</th><th>Pts</th></tr>
       ${rows.map((r,i)=>`<tr class="${i<2&&r.gp>0?"q":""}"><td>${BY_CODE[r.c].flag} ${BY_CODE[r.c].name}${r.clinchAdv?`<span class="lock" title="Clinched a knockout berth — top-2 or guaranteed best-third (+4)">🔒</span>`:""} ${ownerChip(r.c)}</td><td>${r.gp}</td><td>${r.gf-r.ga}</td><td><b>${r.gPts}</b></td></tr>`).join("")}
