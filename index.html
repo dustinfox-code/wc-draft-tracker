@@ -572,12 +572,19 @@ function computeScores(){
 //      place can't be bumped out of the top 8. Since a 4-team group's third can
 //      score at most 6 pts (a 7-pt third needs 21 pts among the top 3 > 18 max),
 //      a guaranteed-3rd team on P pts is safe when ≤7 OTHER groups can field a
-//      third reaching ≥P pts. This is what makes the USA (6 pts, can't drop below
-//      3rd) clinch before locking top-2 — exactly what ESPN/Silver report.
-// The best-third test is points-only and conservative (treats every point-tie as
-// against the team), so it never over-claims; clinchTop2 layers in the exact,
-// goal-tie-broken top-2 cases on top. Cached on the set of finalized group scores
-// so it recomputes only when a result lands.
+//      third that finishes above it. The cross-group third-place tie-breakers are
+//      points → goal difference → goals scored (then fair play, then FIFA ranking,
+//      which the feed can't see). Once a group is FINAL its third's exact GD/GF is
+//      known, so we rank it precisely against other finished groups; an UNFINISHED
+//      group still counts whenever its third can reach ≥P pts, because its GD is
+//      unknowable and could beat us. This is what makes the USA (6 pts, can't drop
+//      below 3rd) clinch before locking top-2, and — via the GD tie-break — what
+//      separates a clinched Bosnia (-1 GD, ≤7 above) from a not-yet-safe Paraguay
+//      (-2 GD, 8 above) on equal points, exactly as ESPN/Silver report.
+// The test is conservative (an exact points-AND-goals tie counts against the team,
+// and unfinished groups are assumed to outrank), so it never over-claims; clinchTop2
+// layers in the goal-tie-broken top-2 cases on top. Cached on the set of finalized
+// group scores so it recomputes only when a result lands.
 // ============================================================================
 const CLINCH_CAP = 9;  // max goals/side per remaining match considered (top-2 test)
 const BEST_THIRDS = 8; // third-place teams that advance to the Round of 32
@@ -595,10 +602,31 @@ function computeClinch(){
   }
   if(sig === _clinch.sig) return _clinch.set;
   const groupTeams = g => TEAMS.filter(t=>"Group "+t.group===g).map(t=>t.code);
-  // Highest points a group's eventual third-place team can still reach (per group).
-  const maxThird = {};
-  for(const g in byG){ const teams = groupTeams(g);
-    if(teams.length === 4) maxThird[g] = maxThirdPts(teams, byG[g].played, byG[g].rem); }
+  // Per group: the highest points its eventual third can still reach, plus — for
+  // groups that are DONE — that third's exact overall (pts, GD, GF), so the
+  // cross-group best-third race can be tie-broken on goal difference.
+  const maxThird = {}, thirdStat = {};
+  for(const g in byG){ const teams = groupTeams(g); if(teams.length !== 4) continue;
+    maxThird[g] = maxThirdPts(teams, byG[g].played, byG[g].rem);
+    if(byG[g].rem.length === 0){
+      const c = rankGroup(teams, byG[g].played)[2], s = leagueStats(teams, byG[g].played)[c];
+      thirdStat[g] = {pts:s.pts, gd:s.gf-s.ga, gf:s.gf};
+    }
+  }
+  // Worst-case count of OTHER groups whose third-place team finishes ABOVE a third
+  // sitting on (pts, gd, gf). A DONE group's third is compared exactly on the FIFA
+  // third-place tie-breakers (points → GD → goals; an exact tie counts against us,
+  // since fair play / FIFA ranking aren't in the feed). An UNFINISHED group counts
+  // whenever its third can still reach ≥ pts — its GD is unknowable, so worst case
+  // it outranks us.
+  const thirdsAbove = (g, pts, gd, gf) => { let n = 0;
+    for(const o in maxThird){ if(o === g) continue;
+      if(o in thirdStat){ const t = thirdStat[o];
+        if(t.pts>pts || (t.pts===pts && (t.gd>gd || (t.gd===gd && t.gf>=gf)))) n++;
+      } else if(maxThird[o] >= pts) n++;
+    }
+    return n;
+  };
   const set = new Set();
   for(const g in byG){
     const {played, rem} = byG[g];
@@ -608,7 +636,7 @@ function computeClinch(){
     // (2) berth lock (top-2 or guaranteed best-third) — possible a game earlier
     if(rem.length <= 3){
       const competitorsGE = P => Object.keys(maxThird).filter(o=>o!==g && maxThird[o]>=P).length;
-      clinchBerth(teams, played, rem, competitorsGE).forEach(c=>set.add(c));
+      clinchBerth(teams, played, rem, competitorsGE, (P,gd,gf)=>thirdsAbove(g,P,gd,gf)).forEach(c=>set.add(c));
     }
   }
   _clinch = {sig, set};
@@ -700,14 +728,17 @@ function maxThirdPts(teams, played, rem){
 }
 
 // Teams that have clinched a knockout berth — guaranteed across EVERY remaining
-// win/draw/loss combo to finish either top-2 OR third with a points total that
-// can't fall outside the 8 best thirds. Points-only and conservative: every
-// point-tie is counted against the team, so it never over-claims (clinchTop2
-// adds the goal-tie-broken top-2 cases). competitorsGE(P) = how many OTHER groups
-// can still field a third-place team reaching ≥P points.
-function clinchBerth(teams, played, rem, competitorsGE){
+// win/draw/loss combo to finish either top-2 OR a top-8 third. Conservative: every
+// point-tie within the group is counted against the team. For the best-third test,
+// once the group is FINAL the team's exact goal difference is known, so it's ranked
+// precisely against other finished groups' thirds via thirdsAbove(P,gd,gf); while
+// the group is still in progress its GD is unknowable, so we fall back to the
+// points-only competitorsGE(P) = how many OTHER groups can still field a third-place
+// team reaching ≥P points. Either way it never over-claims.
+function clinchBerth(teams, played, rem, competitorsGE, thirdsAbove){
   const base = {}; teams.forEach(c=>base[c]=0);
   for(const m of played){ if(m.ga>m.gb)base[m.a]+=3; else if(m.ga<m.gb)base[m.b]+=3; else {base[m.a]++;base[m.b]++;} }
+  const done = rem.length === 0, ov = done ? leagueStats(teams, played) : null; // exact GD only when group is final
   const total = Math.pow(3, rem.length); const miss = new Set();
   for(let s=0; s<total; s++){
     let x=s; const pts=Object.assign({}, base);
@@ -721,7 +752,9 @@ function clinchBerth(teams, played, rem, competitorsGE){
       const worstRank = above + level + 1; // worst case: every level team sits above X
       let safe;
       if(worstRank <= 2) safe = true;                                   // can't drop below 2nd
-      else if(worstRank === 3) safe = competitorsGE(P) <= BEST_THIRDS-1; // 3rd, but a top-8 third
+      else if(worstRank === 3) safe = done                              // 3rd, but a top-8 third?
+        ? thirdsAbove(P, ov[X].gf-ov[X].ga, ov[X].gf) <= BEST_THIRDS-1   //   GD-exact once group is final
+        : competitorsGE(P) <= BEST_THIRDS-1;                            //   GD unknowable → points-only
       else safe = false;                                                // could fall to 4th
       if(!safe) miss.add(X);
     }
