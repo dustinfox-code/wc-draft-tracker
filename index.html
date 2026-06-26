@@ -80,8 +80,6 @@
   .gtable th{color:var(--muted);font-size:.6rem;text-transform:uppercase}
   .gtable tr.q td{color:var(--green)}
   .gtable .lock{cursor:help;font-size:.7rem;margin-left:2px;vertical-align:middle}
-  .r32o{color:var(--muted);font-size:.62rem;white-space:nowrap;cursor:help}
-  .r32o b{color:var(--green);font-weight:600}
   .match-row .r32lock{font-size:.6rem;margin-left:3px;vertical-align:middle;cursor:help;opacity:.85}
   select,option{background:var(--card2);color:var(--text);border:1px solid var(--track);border-radius:8px;padding:5px 8px;font-size:.8rem}
   .chip{display:inline-flex;align-items:center;gap:4px;background:var(--card2);border-radius:8px;padding:2px 8px;font-size:.75rem;margin:2px 4px 2px 0}
@@ -896,18 +894,6 @@ function resolveBracketSide(tok, gp, mustIn, mustOut){
     const Lg = lockedThirdGroup(w, mustIn, mustOut); if(!Lg) return null; const o = groupPositions(Lg, gp); return o[2] ? {code:o[2], viaLogic:true} : null; }
   return null;
 }
-// code -> {opp, viaLogic} for every R32 fixture whose BOTH sides resolve to a team.
-function r32Opponents(){ if(!DATA) return {};
-  const gp = r32GroupPlayed(), mustIn = clinchedThirdGroups(), mustOut = eliminatedThirdGroups(), map = {};
-  for(const m of DATA.matches){ if(m.round !== "Round of 32") continue;
-    const s1 = resolveBracketSide(tname(m.team1), gp, mustIn, mustOut), s2 = resolveBracketSide(tname(m.team2), gp, mustIn, mustOut);
-    if(!s1 || !s2 || !s1.code || !s2.code) continue;
-    const via = s1.viaLogic || s2.viaLogic;
-    map[s1.code] = {opp:s2.code, viaLogic:via}; map[s2.code] = {opp:s1.code, viaLogic:via};
-  }
-  return map;
-}
-
 // ============================================================================
 // Preferences (followed manager + extra teams)
 // ============================================================================
@@ -973,10 +959,8 @@ function render(){
   const followed = followedCodes();
   const T = computeScores();
   const ms = DATA ? DATA.matches : [];
-  // R32 matchup resolution context (shared by matchRow + the group/standings chips)
+  // R32 matchup resolution context (used by matchRow to fill pre-draw bracket placeholders)
   _r32ctx = DATA ? {gp:r32GroupPlayed(), mustIn:clinchedThirdGroups(), mustOut:eliminatedThirdGroups()} : null;
-  const r32 = r32Opponents();
-  const r32Chip = c => { const e=r32[c]; return e ? ` <span class="r32o" title="Round-of-32 opponent${e.viaLogic?" — locked via FIFA Annex C bracket before the feed seeds it":""}">→ R32 v <b>${BY_CODE[e.opp].flag} ${BY_CODE[e.opp].name}</b></span>` : ""; };
 
   const ageDays = SILVER.asOf ? (now - new Date(SILVER.asOf))/86400000 : null;
   const silverNote = SILVER.teams
@@ -1090,7 +1074,7 @@ function render(){
       <div class="teams">${codes.map(c=>`${BY_CODE[c].flag} ${c} ${T[c].pts}`).join(" · ")}</div>
       <div class="detail"><table>
         <tr><th>Team</th><th>Grp pts</th><th>W-D-L</th><th>Adv</th><th>KO wins</th><th>Banked</th><th>Proj</th></tr>
-        ${codes.map(c=>{const t=T[c];return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}${r32Chip(c)}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":t.clinchAdv?`<span class="unconf" title="Clinched a knockout berth — +4 unconfirmed until the bracket is seeded">+4</span>`:"—"}</td><td>${t.koWins.length?t.koWins.map(r=>r==="Final"?"F(+10)":"+5").join(" "):"—"}</td><td><b>${t.pts}</b></td><td style="color:var(--muted)">${evFor(c).toFixed(1)}</td></tr>`;}).join("")}
+        ${codes.map(c=>{const t=T[c];return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":t.clinchAdv?`<span class="unconf" title="Clinched a knockout berth — +4 unconfirmed until the bracket is seeded">+4</span>`:"—"}</td><td>${t.koWins.length?t.koWins.map(r=>r==="Final"?"F(+10)":"+5").join(" "):"—"}</td><td><b>${t.pts}</b></td><td style="color:var(--muted)">${evFor(c).toFixed(1)}</td></tr>`;}).join("")}
       </table></div>
     </div>`;
   }).join("");
@@ -1127,7 +1111,7 @@ function render(){
     const rows=rankGroup(groups[g], gPlayed["Group "+g]||[]).map(c=>({c,...T[c]}));
     return `<div class="gtable"><div class="gname">Group ${g}</div><table>
       <tr><th>Team</th><th>P</th><th>GD</th><th>Pts</th></tr>
-      ${rows.map((r,i)=>`<tr class="${i<2&&r.gp>0?"q":""}"><td>${BY_CODE[r.c].flag} ${BY_CODE[r.c].name}${r.clinchAdv?`<span class="lock" title="Clinched a knockout berth — top-2 or guaranteed best-third (+4)">🔒</span>`:""} ${ownerChip(r.c)}${r32Chip(r.c)}</td><td>${r.gp}</td><td>${r.gf-r.ga}</td><td><b>${r.gPts}</b></td></tr>`).join("")}
+      ${rows.map((r,i)=>`<tr class="${i<2&&r.gp>0?"q":""}"><td>${BY_CODE[r.c].flag} ${BY_CODE[r.c].name}${r.clinchAdv?`<span class="lock" title="Clinched a knockout berth — top-2 or guaranteed best-third (+4)">🔒</span>`:""} ${ownerChip(r.c)}</td><td>${r.gp}</td><td>${r.gf-r.ga}</td><td><b>${r.gPts}</b></td></tr>`).join("")}
     </table></div>`;
   }).join("");
 
