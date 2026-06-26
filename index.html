@@ -80,6 +80,9 @@
   .gtable th{color:var(--muted);font-size:.6rem;text-transform:uppercase}
   .gtable tr.q td{color:var(--green)}
   .gtable .lock{cursor:help;font-size:.7rem;margin-left:2px;vertical-align:middle}
+  .r32o{color:var(--muted);font-size:.62rem;white-space:nowrap;cursor:help}
+  .r32o b{color:var(--green);font-weight:600}
+  .match-row .r32lock{font-size:.6rem;margin-left:3px;vertical-align:middle;cursor:help;opacity:.85}
   select,option{background:var(--card2);color:var(--text);border:1px solid var(--track);border-radius:8px;padding:5px 8px;font-size:.8rem}
   .chip{display:inline-flex;align-items:center;gap:4px;background:var(--card2);border-radius:8px;padding:2px 8px;font-size:.75rem;margin:2px 4px 2px 0}
   .chip button{background:none;border:none;color:var(--red);cursor:pointer;font-size:.8rem;padding:0}
@@ -627,6 +630,11 @@ function computeClinch(){
     }
     return n;
   };
+  // Groups whose THIRD-place team has clinched a top-8 berth (finished groups only —
+  // identity and GD fixed). Drives R32 matchup locking via the Annex C table below.
+  const thirdGroups = new Set();
+  for(const g in thirdStat){ const t = thirdStat[g];
+    if(thirdsAbove(g, t.pts, t.gd, t.gf) <= BEST_THIRDS-1) thirdGroups.add(g.replace("Group ","")); }
   const set = new Set();
   for(const g in byG){
     const {played, rem} = byG[g];
@@ -639,7 +647,7 @@ function computeClinch(){
       clinchBerth(teams, played, rem, competitorsGE, (P,gd,gf)=>thirdsAbove(g,P,gd,gf)).forEach(c=>set.add(c));
     }
   }
-  _clinch = {sig, set};
+  _clinch = {sig, set, tg:thirdGroups};
   return set;
 }
 
@@ -764,6 +772,72 @@ function clinchBerth(teams, played, rem, competitorsGE, thirdsAbove){
 }
 
 // ============================================================================
+// Round-of-32 matchup resolution — FIFA 2026 third-place assignment (Annex C)
+// The R32 bracket is pre-drawn: each of 8 group-winner slots faces the best third
+// from a fixed set of 5 groups, resolved by FIFA's published 495-row table (Annex C)
+// keyed on WHICH 8 of the 12 groups supply a qualifying third. We embed that table;
+// the instant a slot's opponent is invariant across every still-reachable combination
+// it locks — the same deduction FIFA/outlets use to confirm e.g. USA–Bosnia before the
+// group stage even ends. Reachability is filtered CONSERVATIVELY: a combination counts
+// as possible unless it omits a group whose third has already CLINCHED a top-8 berth,
+// so we lean toward "not locked" and can never show a wrong matchup. As more thirds
+// clinch and group winners resolve, additional matchups light up automatically.
+// ============================================================================
+const R32_SLOT_ORDER = ["A","B","D","E","G","I","K","L"]; // column order within COMBO_BLOB assignments
+const R32_CAND = {A:"CEFHI",B:"EFGIJ",D:"BEFIJ",E:"ABCDF",G:"AEHIJ",I:"CDFGH",K:"DEIJL",L:"EHIJK"};
+const CAND_TO_WINNER = Object.fromEntries(Object.entries(R32_CAND).map(([w,c])=>[c.split("").sort().join(""), w]));
+// 495 rows x 16 chars: 8 qualifying-group letters + 8 assigned third-place letters (in
+// R32_SLOT_ORDER). Verified: covers every C(12,8) combo as a perfect matching within R32_CAND.
+const COMBO_BLOB = "EFGHIJKLEJIFHGLKDFGHIJKLHGIDJFLKDEGHIJKLEJIDHGLKDEFHIJKLEJIDHFLKDEFGIJKLEGIDJFLKDEFGHJKLEGJDHFLKDEFGHIKLEGIDHFLKDEFGHIJLEGJDHFLIDEFGHIJKEGJDHFIKCFGHIJKLHGICJFLKCEGHIJKLEJICHGLKCEFHIJKLEJICHFLKCEFGIJKLEGICJFLKCEFGHJKLEGJCHFLKCEFGHIKLEGICHFLKCEFGHIJLEGJCHFLICEFGHIJKEGJCHFIKCDGHIJKLHGICJDLKCDFHIJKLCJIDHFLKCDFGIJKLCGIDJFLKCDFGHJKLCGJDHFLKCDFGHIKLCGIDHFLKCDFGHIJLCGJDHFLICDFGHIJKCGJDHFIKCDEHIJKLEJICHDLKCDEGIJKLEGICJDLKCDEGHJKLEGJCHDLKCDEGHIKLEGICHDLKCDEGHIJLEGJCHDLICDEGHIJKEGJCHDIKCDEFIJKLCJEDIFLKCDEFHJKLCJEDHFLKCDEFHIKLCEIDHFLKCDEFHIJLCJEDHFLICDEFHIJKCJEDHFIKCDEFGJKLCGEDJFLKCDEFGIKLCGEDIFLKCDEFGIJLCGEDJFLICDEFGIJKCGEDJFIKCDEFGHKLCGEDHFLKCDEFGHJLCGJDHFLECDEFGHJKCGJDHFEKCDEFGHILCGEDHFLICDEFGHIKCGEDHFIKCDEFGHIJCGJDHFEIBFGHIJKLHJBFIGLKBEGHIJKLEJIBHGLKBEFHIJKLEJBFIHLKBEFGIJKLEJBFIGLKBEFGHJKLEJBFHGLKBEFGHIKLEGBFIHLKBEFGHIJLEJBFHGLIBEFGHIJKEJBFHGIKBDGHIJKLHJBDIGLKBDFHIJKLHJBDIFLKBDFGIJKLIGBDJFLKBDFGHJKLHGBDJFLKBDFGHIKLHGBDIFLKBDFGHIJLHGBDJFLIBDFGHIJKHGBDJFIKBDEHIJKLEJBDIHLKBDEGIJKLEJBDIGLKBDEGHJKLEJBDHGLKBDEGHIKLEGBDIHLKBDEGHIJLEJBDHGLIBDEGHIJKEJBDHGIKBDEFIJKLEJBDIFLKBDEFHJKLEJBDHFLKBDEFHIKLEIBDHFLKBDEFHIJLEJBDHFLIBDEFHIJKEJBDHFIKBDEFGJKLEGBDJFLKBDEFGIKLEGBDIFLKBDEFGIJLEGBDJFLIBDEFGIJKEGBDJFIKBDEFGHKLEGBDHFLKBDEFGHJLHGBDJFLEBDEFGHJKHGBDJFEKBDEFGHILEGBDHFLIBDEFGHIKEGBDHFIKBDEFGHIJHGBDJFEIBCGHIJKLHJBCIGLKBCFHIJKLHJBCIFLKBCFGIJKLIGBCJFLKBCFGHJKLHGBCJFLKBCFGHIKLHGBCIFLKBCFGHIJLHGBCJFLIBCFGHIJKHGBCJFIKBCEHIJKLEJBCIHLKBCEGIJKLEJBCIGLKBCEGHJKLEJBCHGLKBCEGHIKLEGBCIHLKBCEGHIJLEJBCHGLIBCEGHIJKEJBCHGIKBCEFIJKLEJBCIFLKBCEFHJKLEJBCHFLKBCEFHIKLEIBCHFLKBCEFHIJLEJBCHFLIBCEFHIJKEJBCHFIKBCEFGJKLEGBCJFLKBCEFGIKLEGBCIFLKBCEFGIJLEGBCJFLIBCEFGIJKEGBCJFIKBCEFGHKLEGBCHFLKBCEFGHJLHGBCJFLEBCEFGHJKHGBCJFEKBCEFGHILEGBCHFLIBCEFGHIKEGBCHFIKBCEFGHIJHGBCJFEIBCDHIJKLHJBCIDLKBCDGIJKLIGBCJDLKBCDGHJKLHGBCJDLKBCDGHIKLHGBCIDLKBCDGHIJLHGBCJDLIBCDGHIJKHGBCJDIKBCDFIJKLCJBDIFLKBCDFHJKLCJBDHFLKBCDFHIKLCIBDHFLKBCDFHIJLCJBDHFLIBCDFHIJKCJBDHFIKBCDFGJKLCGBDJFLKBCDFGIKLCGBDIFLKBCDFGIJLCGBDJFLIBCDFGIJKCGBDJFIKBCDFGHKLCGBDHFLKBCDFGHJLCGBDHFLJBCDFGHJKHGBCJFDKBCDFGHILCGBDHFLIBCDFGHIKCGBDHFIKBCDFGHIJHGBCJFDIBCDEIJKLEJBCIDLKBCDEHJKLEJBCHDLKBCDEHIKLEIBCHDLKBCDEHIJLEJBCHDLIBCDEHIJKEJBCHDIKBCDEGJKLEGBCJDLKBCDEGIKLEGBCIDLKBCDEGIJLEGBCJDLIBCDEGIJKEGBCJDIKBCDEGHKLEGBCHDLKBCDEGHJLHGBCJDLEBCDEGHJKHGBCJDEKBCDEGHILEGBCHDLIBCDEGHIKEGBCHDIKBCDEGHIJHGBCJDEIBCDEFJKLCJBDEFLKBCDEFIKLCEBDIFLKBCDEFIJLCJBDEFLIBCDEFIJKCJBDEFIKBCDEFHKLCEBDHFLKBCDEFHJLCJBDHFLEBCDEFHJKCJBDHFEKBCDEFHILCEBDHFLIBCDEFHIKCEBDHFIKBCDEFHIJCJBDHFEIBCDEFGKLCGBDEFLKBCDEFGJLCGBDJFLEBCDEFGJKCGBDJFEKBCDEFGILCGBDEFLIBCDEFGIKCGBDEFIKBCDEFGIJCGBDJFEIBCDEFGHLCGBDHFLEBCDEFGHKCGBDHFEKBCDEFGHJHGBCJFDEBCDEFGHICGBDHFEIAFGHIJKLHJIFAGLKAEGHIJKLEJIAHGLKAEFHIJKLEJIFAHLKAEFGIJKLEJIFAGLKAEFGHJKLEGJFAHLKAEFGHIKLEGIFAHLKAEFGHIJLEGJFAHLIAEFGHIJKEGJFAHIKADGHIJKLHJIDAGLKADFHIJKLHJIDAFLKADFGIJKLIGJDAFLKADFGHJKLHGJDAFLKADFGHIKLHGIDAFLKADFGHIJLHGJDAFLIADFGHIJKHGJDAFIKADEHIJKLEJIDAHLKADEGIJKLEJIDAGLKADEGHJKLEGJDAHLKADEGHIKLEGIDAHLKADEGHIJLEGJDAHLIADEGHIJKEGJDAHIKADEFIJKLEJIDAFLKADEFHJKLHJEDAFLKADEFHIKLHEIDAFLKADEFHIJLHJEDAFLIADEFHIJKHJEDAFIKADEFGJKLEGJDAFLKADEFGIKLEGIDAFLKADEFGIJLEGJDAFLIADEFGIJKEGJDAFIKADEFGHKLHGEDAFLKADEFGHJLHGJDAFLEADEFGHJKHGJDAFEKADEFGHILHGEDAFLIADEFGHIKHGEDAFIKADEFGHIJHGJDAFEIACGHIJKLHJICAGLKACFHIJKLHJICAFLKACFGIJKLIGJCAFLKACFGHJKLHGJCAFLKACFGHIKLHGICAFLKACFGHIJLHGJCAFLIACFGHIJKHGJCAFIKACEHIJKLEJICAHLKACEGIJKLEJICAGLKACEGHJKLEGJCAHLKACEGHIKLEGICAHLKACEGHIJLEGJCAHLIACEGHIJKEGJCAHIKACEFIJKLEJICAFLKACEFHJKLHJECAFLKACEFHIKLHEICAFLKACEFHIJLHJECAFLIACEFHIJKHJECAFIKACEFGJKLEGJCAFLKACEFGIKLEGICAFLKACEFGIJLEGJCAFLIACEFGIJKEGJCAFIKACEFGHKLHGECAFLKACEFGHJLHGJCAFLEACEFGHJKHGJCAFEKACEFGHILHGECAFLIACEFGHIKHGECAFIKACEFGHIJHGJCAFEIACDHIJKLHJICADLKACDGIJKLIGJCADLKACDGHJKLHGJCADLKACDGHIKLHGICADLKACDGHIJLHGJCADLIACDGHIJKHGJCADIKACDFIJKLCJIDAFLKACDFHJKLHJFCADLKACDFHIKLHFICADLKACDFHIJLHJFCADLIACDFHIJKHJFCADIKACDFGJKLCGJDAFLKACDFGIKLCGIDAFLKACDFGIJLCGJDAFLIACDFGIJKCGJDAFIKACDFGHKLHGFCADLKACDFGHJLCGJDAFLHACDFGHJKHGJCAFDKACDFGHILHGFCADLIACDFGHIKHGFCADIKACDFGHIJHGJCAFDIACDEIJKLEJICADLKACDEHJKLHJECADLKACDEHIKLHEICADLKACDEHIJLHJECADLIACDEHIJKHJECADIKACDEGJKLEGJCADLKACDEGIKLEGICADLKACDEGIJLEGJCADLIACDEGIJKEGJCADIKACDEGHKLHGECADLKACDEGHJLHGJCADLEACDEGHJKHGJCADEKACDEGHILHGECADLIACDEGHIKHGECADIKACDEGHIJHGJCADEIACDEFJKLCJEDAFLKACDEFIKLCEIDAFLKACDEFIJLCJEDAFLIACDEFIJKCJEDAFIKACDEFHKLHEFCADLKACDEFHJLHJFCADLEACDEFHJKHJECAFDKACDEFHILHEFCADLIACDEFHIKHEFCADIKACDEFHIJHJECAFDIACDEFGKLCGEDAFLKACDEFGJLCGJDAFLEACDEFGJKCGJDAFEKACDEFGILCGEDAFLIACDEFGIKCGEDAFIKACDEFGIJCGJDAFEIACDEFGHLHGFCADLEACDEFGHKHGECAFDKACDEFGHJHGJCAFDEACDEFGHIHGECAFDIABGHIJKLHJBAIGLKABFHIJKLHJBAIFLKABFGIJKLIJBFAGLKABFGHJKLHJBFAGLKABFGHIKLHGBAIFLKABFGHIJLHJBFAGLIABFGHIJKHJBFAGIKABEHIJKLEJBAIHLKABEGIJKLEJBAIGLKABEGHJKLEJBAHGLKABEGHIKLEGBAIHLKABEGHIJLEJBAHGLIABEGHIJKEJBAHGIKABEFIJKLEJBAIFLKABEFHJKLEJBFAHLKABEFHIKLEIBFAHLKABEFHIJLEJBFAHLIABEFHIJKEJBFAHIKABEFGJKLEJBFAGLKABEFGIKLEGBAIFLKABEFGIJLEJBFAGLIABEFGIJKEJBFAGIKABEFGHKLEGBFAHLKABEFGHJLHJBFAGLEABEFGHJKHJBFAGEKABEFGHILEGBFAHLIABEFGHIKEGBFAHIKABEFGHIJHJBFAGEIABDHIJKLIJBDAHLKABDGIJKLIJBDAGLKABDGHJKLHJBDAGLKABDGHIKLIGBDAHLKABDGHIJLHJBDAGLIABDGHIJKHJBDAGIKABDFIJKLIJBDAFLKABDFHJKLHJBDAFLKABDFHIKLHIBDAFLKABDFHIJLHJBDAFLIABDFHIJKHJBDAFIKABDFGJKLFJBDAGLKABDFGIKLIGBDAFLKABDFGIJLFJBDAGLIABDFGIJKFJBDAGIKABDFGHKLHGBDAFLKABDFGHJLHGBDAFLJABDFGHJKHGBDAFJKABDFGHILHGBDAFLIABDFGHIKHGBDAFIKABDFGHIJHGBDAFIJABDEIJKLEJBAIDLKABDEHJKLEJBDAHLKABDEHIKLEIBDAHLKABDEHIJLEJBDAHLIABDEHIJKEJBDAHIKABDEGJKLEJBDAGLKABDEGIKLEGBAIDLKABDEGIJLEJBDAGLIABDEGIJKEJBDAGIKABDEGHKLEGBDAHLKABDEGHJLHJBDAGLEABDEGHJKHJBDAGEKABDEGHILEGBDAHLIABDEGHIKEGBDAHIKABDEGHIJHJBDAGEIABDEFJKLEJBDAFLKABDEFIKLEIBDAFLKABDEFIJLEJBDAFLIABDEFIJKEJBDAFIKABDEFHKLHEBDAFLKABDEFHJLHJBDAFLEABDEFHJKHJBDAFEKABDEFHILHEBDAFLIABDEFHIKHEBDAFIKABDEFHIJHJBDAFEIABDEFGKLEGBDAFLKABDEFGJLEGBDAFLJABDEFGJKEGBDAFJKABDEFGILEGBDAFLIABDEFGIKEGBDAFIKABDEFGIJEGBDAFIJABDEFGHLHGBDAFLEABDEFGHKHGBDAFEKABDEFGHJHGBDAFEJABDEFGHIHGBDAFEIABCHIJKLIJBCAHLKABCGIJKLIJBCAGLKABCGHJKLHJBCAGLKABCGHIKLIGBCAHLKABCGHIJLHJBCAGLIABCGHIJKHJBCAGIKABCFIJKLIJBCAFLKABCFHJKLHJBCAFLKABCFHIKLHIBCAFLKABCFHIJLHJBCAFLIABCFHIJKHJBCAFIKABCFGJKLCJBFAGLKABCFGIKLIGBCAFLKABCFGIJLCJBFAGLIABCFGIJKCJBFAGIKABCFGHKLHGBCAFLKABCFGHJLHGBCAFLJABCFGHJKHGBCAFJKABCFGHILHGBCAFLIABCFGHIKHGBCAFIKABCFGHIJHGBCAFIJABCEIJKLEJBAICLKABCEHJKLEJBCAHLKABCEHIKLEIBCAHLKABCEHIJLEJBCAHLIABCEHIJKEJBCAHIKABCEGJKLEJBCAGLKABCEGIKLEGBAICLKABCEGIJLEJBCAGLIABCEGIJKEJBCAGIKABCEGHKLEGBCAHLKABCEGHJLHJBCAGLEABCEGHJKHJBCAGEKABCEGHILEGBCAHLIABCEGHIKEGBCAHIKABCEGHIJHJBCAGEIABCEFJKLEJBCAFLKABCEFIKLEIBCAFLKABCEFIJLEJBCAFLIABCEFIJKEJBCAFIKABCEFHKLHEBCAFLKABCEFHJLHJBCAFLEABCEFHJKHJBCAFEKABCEFHILHEBCAFLIABCEFHIKHEBCAFIKABCEFHIJHJBCAFEIABCEFGKLEGBCAFLKABCEFGJLEGBCAFLJABCEFGJKEGBCAFJKABCEFGILEGBCAFLIABCEFGIKEGBCAFIKABCEFGIJEGBCAFIJABCEFGHLHGBCAFLEABCEFGHKHGBCAFEKABCEFGHJHGBCAFEJABCEFGHIHGBCAFEIABCDIJKLIJBCADLKABCDHJKLHJBCADLKABCDHIKLHIBCADLKABCDHIJLHJBCADLIABCDHIJKHJBCADIKABCDGJKLCJBDAGLKABCDGIKLIGBCADLKABCDGIJLCJBDAGLIABCDGIJKCJBDAGIKABCDGHKLHGBCADLKABCDGHJLHGBCADLJABCDGHJKHGBCADJKABCDGHILHGBCADLIABCDGHIKHGBCADIKABCDGHIJHGBCADIJABCDFJKLCJBDAFLKABCDFIKLCIBDAFLKABCDFIJLCJBDAFLIABCDFIJKCJBDAFIKABCDFHKLHFBCADLKABCDFHJLCJBDAFLHABCDFHJKHJBCAFDKABCDFHILHFBCADLIABCDFHIKHFBCADIKABCDFHIJHJBCAFDIABCDFGKLCGBDAFLKABCDFGJLCGBDAFLJABCDFGJKCGBDAFJKABCDFGILCGBDAFLIABCDFGIKCGBDAFIKABCDFGIJCGBDAFIJABCDFGHLCGBDAFLHABCDFGHKHGBCAFDKABCDFGHJHGBCAFDJABCDFGHIHGBCAFDIABCDEJKLEJBCADLKABCDEIKLEIBCADLKABCDEIJLEJBCADLIABCDEIJKEJBCADIKABCDEHKLHEBCADLKABCDEHJLHJBCADLEABCDEHJKHJBCADEKABCDEHILHEBCADLIABCDEHIKHEBCADIKABCDEHIJHJBCADEIABCDEGKLEGBCADLKABCDEGJLEGBCADLJABCDEGJKEGBCADJKABCDEGILEGBCADLIABCDEGIKEGBCADIKABCDEGIJEGBCADIJABCDEGHLHGBCADLEABCDEGHKHGBCADEKABCDEGHJHGBCADEJABCDEGHIHGBCADEIABCDEFKLCEBDAFLKABCDEFJLCJBDAFLEABCDEFJKCJBDAFEKABCDEFILCEBDAFLIABCDEFIKCEBDAFIKABCDEFIJCJBDAFEIABCDEFHLHFBCADLEABCDEFHKHEBCAFDKABCDEFHJHJBCAFDEABCDEFHIHEBCAFDIABCDEFGLCGBDAFLEABCDEFGKCGBDAFEKABCDEFGJCGBDAFEJABCDEFGICGBDAFEIABCDEFGHHGBCAFDE";
+const COMBO_MATRIX = (()=>{ const o=[]; for(let i=0;i<COMBO_BLOB.length;i+=16) o.push({q:COMBO_BLOB.slice(i,i+8), a:COMBO_BLOB.slice(i+8,i+16)}); return o; })();
+
+// The third-place GROUP locked into a winner-slot, or null if it still varies. mustIn =
+// groups whose third has clinched (must appear in every real combo); treating all other
+// combos as reachable keeps this from ever over-claiming a lock.
+function lockedThirdGroup(winnerLetter, mustIn){
+  const idx = R32_SLOT_ORDER.indexOf(winnerLetter); if(idx < 0) return null;
+  let val = null;
+  for(const row of COMBO_MATRIX){
+    let reachable = true; for(const g of mustIn) if(!row.q.includes(g)){ reachable = false; break; }
+    if(!reachable) continue;
+    const a = row.a[idx];
+    if(val === null) val = a; else if(val !== a) return null; // assignment not invariant -> unlocked
+  }
+  return val;
+}
+function clinchedThirdGroups(){ computeClinch(); return _clinch.tg || new Set(); }
+
+// Resolve the feed's pre-draw bracket placeholders ("1D", "2A", "3B/E/F/I/J") to teams.
+function r32GroupPlayed(){ const gp = {}; for(const m of DATA.matches){ if(!m.group) continue;
+  const a = tcode(m.team1), b = tcode(m.team2), fs = finalScore(m);
+  if(a && b && fs) (gp[m.group] = gp[m.group] || []).push({a, b, ga:fs[0], gb:fs[1]}); } return gp; }
+const groupLetterCodes = letter => TEAMS.filter(t => t.group === letter).map(t => t.code);
+// [1st,2nd,3rd,4th] codes once the group is finished (all 6 played), else null.
+function groupPositions(letter, gp){ const played = gp["Group "+letter] || [];
+  return played.length === 6 ? rankGroup(groupLetterCodes(letter), played) : null; }
+// One fixture-side token -> {code, viaLogic} (viaLogic = resolved by our bracket logic), or null.
+function resolveBracketSide(tok, gp, mustIn){
+  const named = tcode(tok); if(named) return {code:named, viaLogic:false};
+  const s = (tok||"").replace(/s+/g,""); let mt;
+  if((mt = /^([12])([A-L])$/.exec(s))){ const o = groupPositions(mt[2], gp); return o ? {code:o[+mt[1]-1], viaLogic:true} : null; }
+  if((mt = /^3([A-L])$/.exec(s))){ const o = groupPositions(mt[1], gp); return o ? {code:o[2], viaLogic:true} : null; }
+  if(/^3[A-L](\/[A-L])+$/.test(s)){ const w = CAND_TO_WINNER[s.slice(1).split("/").sort().join("")]; if(!w) return null;
+    const Lg = lockedThirdGroup(w, mustIn); if(!Lg) return null; const o = groupPositions(Lg, gp); return o ? {code:o[2], viaLogic:true} : null; }
+  return null;
+}
+// code -> {opp, viaLogic} for every R32 fixture whose BOTH sides resolve to a team.
+function r32Opponents(){ if(!DATA) return {};
+  const gp = r32GroupPlayed(), mustIn = clinchedThirdGroups(), map = {};
+  for(const m of DATA.matches){ if(m.round !== "Round of 32") continue;
+    const s1 = resolveBracketSide(tname(m.team1), gp, mustIn), s2 = resolveBracketSide(tname(m.team2), gp, mustIn);
+    if(!s1 || !s2 || !s1.code || !s2.code) continue;
+    const via = s1.viaLogic || s2.viaLogic;
+    map[s1.code] = {opp:s2.code, viaLogic:via}; map[s2.code] = {opp:s1.code, viaLogic:via};
+  }
+  return map;
+}
+
+// ============================================================================
 // Preferences (followed manager + extra teams)
 // ============================================================================
 let prefs = JSON.parse(localStorage.getItem("wcLivePrefs")||"null") || {manager:YOU_DEFAULT, extra:[]};
@@ -779,6 +853,7 @@ function followedCodes(){
 // ============================================================================
 let activeTab = "upcoming";
 let expanded = new Set();
+let _r32ctx = null; // {gp, mustIn} cached per render so matchRow can resolve bracket placeholders
 
 const ownerChip = code => {
   const m = OWNER[code] && MGR[OWNER[code]];
@@ -796,9 +871,14 @@ function countdownStr(ms){
 }
 
 function matchRow(m, now, followed){
-  const c1=tcode(m.team1), c2=tcode(m.team2);
+  let c1=tcode(m.team1), c2=tcode(m.team2), lk1=false, lk2=false;
+  if(!m.group && (!c1||!c2) && _r32ctx){ // fill pre-draw bracket placeholders ("1D", "3B/E/F/I/J", …)
+    if(!c1){ const r=resolveBracketSide(tname(m.team1), _r32ctx.gp, _r32ctx.mustIn); if(r&&r.code){ c1=r.code; lk1=r.viaLogic; } }
+    if(!c2){ const r=resolveBracketSide(tname(m.team2), _r32ctx.gp, _r32ctx.mustIn); if(r&&r.code){ c2=r.code; lk2=r.viaLogic; } }
+  }
   const st = status(m, now), k = kickoff(m), fs = finalScore(m);
   const isF = (c1&&followed.has(c1))||(c2&&followed.has(c2));
+  const R32LK = '<span class="r32lock" title="Confirmed from group results + FIFA Annex C bracket — locked before the feed seeds it">🔒</span>';
   const nm = (c,raw) => c ? `${BY_CODE[c].flag} <span class="nm">${BY_CODE[c].name}</span>` : `<span class="nm" style="color:var(--muted)">${tname(raw)}</span>`;
   const mid = st==="done" ? `${fs[0]}–${fs[1]}<span class="note">${scoreNote(m)}</span>`
             : st==="live" ? (m._live ? `${m._live.s[0]}–${m._live.s[1]}<span class="note" style="color:var(--red)">LIVE ${m._live.detail||""}</span>` : `<span class="pill live">LIVE</span>`)
@@ -809,9 +889,9 @@ function matchRow(m, now, followed){
     ? `<a class="sofa" href="${su}" target="_blank" rel="noopener" title="Live stats &amp; summary on Sofascore">${mid}<span class="sofa-ico">↗</span></a>`
     : mid;
   return `<div class="match-row ${isF?"followed":""}">
-    <span class="t t1">${nm(c1,m.team1)} ${c1?ownerChip(c1):""}</span>
+    <span class="t t1">${nm(c1,m.team1)}${lk1?R32LK:""} ${c1?ownerChip(c1):""}</span>
     <span class="score">${scoreCell}</span>
-    <span class="t t2">${c2?ownerChip(c2):""} ${nm(c2,m.team2)}</span>
+    <span class="t t2">${c2?ownerChip(c2):""} ${nm(c2,m.team2)}${lk2?R32LK:""}</span>
     <span class="when">${k?`${fmtDay(k)}<br>${fmtTime(k)}`:""}${m.group?`<br><span style="opacity:.7">${m.group.replace("Group ","Grp ")}</span>`:`<br><span style="opacity:.7">${m.round}</span>`}</span>
   </div>`;
 }
@@ -822,6 +902,10 @@ function render(){
   const followed = followedCodes();
   const T = computeScores();
   const ms = DATA ? DATA.matches : [];
+  // R32 matchup resolution context (shared by matchRow + the group/standings chips)
+  _r32ctx = DATA ? {gp:r32GroupPlayed(), mustIn:clinchedThirdGroups()} : null;
+  const r32 = r32Opponents();
+  const r32Chip = c => { const e=r32[c]; return e ? ` <span class="r32o" title="Round-of-32 opponent${e.viaLogic?" — locked via FIFA Annex C bracket before the feed seeds it":""}">→ R32 v <b>${BY_CODE[e.opp].flag} ${BY_CODE[e.opp].name}</b></span>` : ""; };
 
   const ageDays = SILVER.asOf ? (now - new Date(SILVER.asOf))/86400000 : null;
   const silverNote = SILVER.teams
@@ -935,7 +1019,7 @@ function render(){
       <div class="teams">${codes.map(c=>`${BY_CODE[c].flag} ${c} ${T[c].pts}`).join(" · ")}</div>
       <div class="detail"><table>
         <tr><th>Team</th><th>Grp pts</th><th>W-D-L</th><th>Adv</th><th>KO wins</th><th>Banked</th><th>Proj</th></tr>
-        ${codes.map(c=>{const t=T[c];return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":t.clinchAdv?`<span class="unconf" title="Clinched a knockout berth — +4 unconfirmed until the bracket is seeded">+4</span>`:"—"}</td><td>${t.koWins.length?t.koWins.map(r=>r==="Final"?"F(+10)":"+5").join(" "):"—"}</td><td><b>${t.pts}</b></td><td style="color:var(--muted)">${evFor(c).toFixed(1)}</td></tr>`;}).join("")}
+        ${codes.map(c=>{const t=T[c];return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}${r32Chip(c)}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":t.clinchAdv?`<span class="unconf" title="Clinched a knockout berth — +4 unconfirmed until the bracket is seeded">+4</span>`:"—"}</td><td>${t.koWins.length?t.koWins.map(r=>r==="Final"?"F(+10)":"+5").join(" "):"—"}</td><td><b>${t.pts}</b></td><td style="color:var(--muted)">${evFor(c).toFixed(1)}</td></tr>`;}).join("")}
       </table></div>
     </div>`;
   }).join("");
@@ -972,7 +1056,7 @@ function render(){
     const rows=rankGroup(groups[g], gPlayed["Group "+g]||[]).map(c=>({c,...T[c]}));
     return `<div class="gtable"><div class="gname">Group ${g}</div><table>
       <tr><th>Team</th><th>P</th><th>GD</th><th>Pts</th></tr>
-      ${rows.map((r,i)=>`<tr class="${i<2&&r.gp>0?"q":""}"><td>${BY_CODE[r.c].flag} ${BY_CODE[r.c].name}${r.clinchAdv?`<span class="lock" title="Clinched a knockout berth — top-2 or guaranteed best-third (+4)">🔒</span>`:""} ${ownerChip(r.c)}</td><td>${r.gp}</td><td>${r.gf-r.ga}</td><td><b>${r.gPts}</b></td></tr>`).join("")}
+      ${rows.map((r,i)=>`<tr class="${i<2&&r.gp>0?"q":""}"><td>${BY_CODE[r.c].flag} ${BY_CODE[r.c].name}${r.clinchAdv?`<span class="lock" title="Clinched a knockout berth — top-2 or guaranteed best-third (+4)">🔒</span>`:""} ${ownerChip(r.c)}${r32Chip(r.c)}</td><td>${r.gp}</td><td>${r.gf-r.ga}</td><td><b>${r.gPts}</b></td></tr>`).join("")}
     </table></div>`;
   }).join("");
 
