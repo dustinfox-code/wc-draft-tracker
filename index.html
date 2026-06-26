@@ -792,13 +792,16 @@ const COMBO_BLOB = "EFGHIJKLEJIFHGLKDFGHIJKLHGIDJFLKDEGHIJKLEJIDHGLKDEFHIJKLEJID
 const COMBO_MATRIX = (()=>{ const o=[]; for(let i=0;i<COMBO_BLOB.length;i+=16) o.push({q:COMBO_BLOB.slice(i,i+8), a:COMBO_BLOB.slice(i+8,i+16)}); return o; })();
 
 // The third-place GROUP locked into a winner-slot, or null if it still varies. mustIn =
-// groups whose third has clinched (must appear in every real combo); treating all other
-// combos as reachable keeps this from ever over-claiming a lock.
-function lockedThirdGroup(winnerLetter, mustIn){
+// groups whose third has CLINCHED (must appear in every real combo); mustOut = groups whose
+// third is ELIMINATED (can appear in none). Any combo not ruled out is treated as reachable,
+// so this can only under-claim a lock, never over-claim.
+function lockedThirdGroup(winnerLetter, mustIn, mustOut){
   const idx = R32_SLOT_ORDER.indexOf(winnerLetter); if(idx < 0) return null;
   let val = null;
   for(const row of COMBO_MATRIX){
-    let reachable = true; for(const g of mustIn) if(!row.q.includes(g)){ reachable = false; break; }
+    let reachable = true;
+    for(const g of mustIn) if(!row.q.includes(g)){ reachable = false; break; }   // omits a clinched third
+    if(reachable && mustOut) for(const g of mustOut) if(row.q.includes(g)){ reachable = false; break; } // contains an eliminated third
     if(!reachable) continue;
     const a = row.a[idx];
     if(val === null) val = a; else if(val !== a) return null; // assignment not invariant -> unlocked
@@ -807,29 +810,97 @@ function lockedThirdGroup(winnerLetter, mustIn){
 }
 function clinchedThirdGroups(){ computeClinch(); return _clinch.tg || new Set(); }
 
+// Minimum points a group's eventual third-place team can still finish on (cheap 3^rem
+// points sweep; mirror of maxThirdPts). Used to spot thirds GUARANTEED above another.
+function minThirdPts(teams, played, rem){
+  const base = {}; teams.forEach(c=>base[c]=0);
+  for(const m of played){ if(m.ga>m.gb)base[m.a]+=3; else if(m.ga<m.gb)base[m.b]+=3; else {base[m.a]++;base[m.b]++;} }
+  const total = Math.pow(3, rem.length); let best = Infinity;
+  for(let s=0; s<total; s++){ let x=s; const pts=Object.assign({}, base);
+    for(let i=0;i<rem.length;i++){ const o=x%3; x=(x/3)|0;
+      if(o===0)pts[rem[i].a]+=3; else if(o===1)pts[rem[i].b]+=3; else {pts[rem[i].a]++;pts[rem[i].b]++;} }
+    const r = teams.map(c=>pts[c]).sort((p,q)=>q-p); if(r[2] < best) best = r[2];
+  }
+  return best===Infinity ? 0 : best;
+}
+// Groups whose third CANNOT reach the top 8 in any remaining scenario (must be absent from
+// every real combo). Sound: counts only thirds GUARANTEED strictly above — a finished group's
+// third with strictly-better fixed stats, or an unfinished group whose MINIMUM third points
+// already exceed. An exact (pts,GD,GF) tie is NOT counted (fair play / FIFA ranking decide it,
+// unseen), so elimination is never over-claimed. Finished groups only.
+function eliminatedThirdGroups(){
+  if(!DATA) return new Set();
+  const byG = {};
+  for(const m of DATA.matches){ if(!m.group) continue; const a=tcode(m.team1), b=tcode(m.team2); if(!a||!b) continue;
+    (byG[m.group] = byG[m.group] || {played:[], rem:[]}); const fs=finalScore(m);
+    if(fs) byG[m.group].played.push({a,b,ga:fs[0],gb:fs[1]}); else byG[m.group].rem.push({a,b}); }
+  const minPts = {}, thirdStat = {};
+  for(const g in byG){ const teams = groupLetterCodes(g.replace("Group ","")); if(teams.length !== 4) continue;
+    minPts[g] = minThirdPts(teams, byG[g].played, byG[g].rem);
+    if(byG[g].rem.length === 0){ const c = rankGroup(teams, byG[g].played)[2], s = leagueStats(teams, byG[g].played)[c];
+      thirdStat[g] = {pts:s.pts, gd:s.gf-s.ga, gf:s.gf}; } }
+  const out = new Set();
+  for(const g in thirdStat){ const X = thirdStat[g]; let above = 0;
+    for(const o in minPts){ if(o === g) continue;
+      if(o in thirdStat){ const t = thirdStat[o];
+        if(t.pts>X.pts || (t.pts===X.pts && (t.gd>X.gd || (t.gd===X.gd && t.gf>X.gf)))) above++; } // strict guaranteed-above
+      else if(minPts[o] > X.pts) above++; }                                                          // unfinished, guaranteed on points
+    if(above >= BEST_THIRDS) out.add(g.replace("Group ","")); }
+  return out;
+}
+
 // Resolve the feed's pre-draw bracket placeholders ("1D", "2A", "3B/E/F/I/J") to teams.
 function r32GroupPlayed(){ const gp = {}; for(const m of DATA.matches){ if(!m.group) continue;
   const a = tcode(m.team1), b = tcode(m.team2), fs = finalScore(m);
   if(a && b && fs) (gp[m.group] = gp[m.group] || []).push({a, b, ga:fs[0], gb:fs[1]}); } return gp; }
 const groupLetterCodes = letter => TEAMS.filter(t => t.group === letter).map(t => t.code);
-// [1st,2nd,3rd,4th] codes once the group is finished (all 6 played), else null.
-function groupPositions(letter, gp){ const played = gp["Group "+letter] || [];
-  return played.length === 6 ? rankGroup(groupLetterCodes(letter), played) : null; }
+// The not-yet-played fixtures of a 4-team group (round robin minus what's played).
+function groupRemaining(teams, played){
+  const seen = new Set(played.map(m=>[m.a,m.b].slice().sort().join("-"))); const rem = [];
+  for(let i=0;i<teams.length;i++) for(let j=i+1;j<teams.length;j++){
+    const k=[teams[i],teams[j]].slice().sort().join("-"); if(!seen.has(k)) rem.push({a:teams[i],b:teams[j]}); }
+  return rem;
+}
+// Ranking buckets (best->worst, ties grouped) -> [code per rank], null where a tie spans the rank.
+function positionsFromBuckets(buckets, n){ const pos = new Array(n).fill(null); let rank = 0;
+  for(const b of buckets){ if(b.length===1) pos[rank] = b[0]; rank += b.length; } return pos; }
+// [1st,2nd,3rd,4th] codes, each the team LOCKED into that rank across EVERY remaining scoreline
+// (null where still undecided). Enumerates completions like clinchTop2 (capped at rem<=2 to stay
+// cheap); a tie spanning a rank leaves it null. Sound — never names a team for a rank it doesn't
+// hold in some completion.
+function lockedGroupPositions(teams, played, rem){
+  if(rem.length === 0) return positionsFromBuckets(rankGroupBuckets(teams, played), teams.length);
+  if(rem.length > 2) return teams.map(()=>null);
+  const span = CLINCH_CAP+1, perMatch = span*span, total = Math.pow(perMatch, rem.length);
+  const locked = teams.map(()=>undefined); // undefined=unseen, code=candidate, null=conflict
+  for(let s=0; s<total; s++){ let x=s; const all = played.slice();
+    for(let i=0;i<rem.length;i++){ const cell=x%perMatch; x=(x/perMatch)|0; all.push({a:rem[i].a,b:rem[i].b,ga:(cell/span)|0,gb:cell%span}); }
+    const pos = positionsFromBuckets(rankGroupBuckets(teams, all), teams.length);
+    for(let p=0;p<teams.length;p++){ if(locked[p]===null) continue;
+      if(pos[p]===null){ locked[p]=null; continue; }
+      if(locked[p]===undefined) locked[p]=pos[p]; else if(locked[p]!==pos[p]) locked[p]=null; }
+  }
+  return locked.map(v=>v===undefined?null:v);
+}
+// [1st,2nd,3rd,4th] codes; an entry is set only when that rank is locked across all remaining
+// results (null otherwise) — works for finished AND in-progress groups.
+function groupPositions(letter, gp){ const teams = groupLetterCodes(letter), played = gp["Group "+letter] || [];
+  return lockedGroupPositions(teams, played, groupRemaining(teams, played)); }
 // One fixture-side token -> {code, viaLogic} (viaLogic = resolved by our bracket logic), or null.
-function resolveBracketSide(tok, gp, mustIn){
+function resolveBracketSide(tok, gp, mustIn, mustOut){
   const named = tcode(tok); if(named) return {code:named, viaLogic:false};
-  const s = (tok||"").replace(/s+/g,""); let mt;
-  if((mt = /^([12])([A-L])$/.exec(s))){ const o = groupPositions(mt[2], gp); return o ? {code:o[+mt[1]-1], viaLogic:true} : null; }
-  if((mt = /^3([A-L])$/.exec(s))){ const o = groupPositions(mt[1], gp); return o ? {code:o[2], viaLogic:true} : null; }
+  const s = (tok||"").replace(/\s+/g,""); let mt;
+  if((mt = /^([12])([A-L])$/.exec(s))){ const o = groupPositions(mt[2], gp); return o[+mt[1]-1] ? {code:o[+mt[1]-1], viaLogic:true} : null; }
+  if((mt = /^3([A-L])$/.exec(s))){ const o = groupPositions(mt[1], gp); return o[2] ? {code:o[2], viaLogic:true} : null; }
   if(/^3[A-L](\/[A-L])+$/.test(s)){ const w = CAND_TO_WINNER[s.slice(1).split("/").sort().join("")]; if(!w) return null;
-    const Lg = lockedThirdGroup(w, mustIn); if(!Lg) return null; const o = groupPositions(Lg, gp); return o ? {code:o[2], viaLogic:true} : null; }
+    const Lg = lockedThirdGroup(w, mustIn, mustOut); if(!Lg) return null; const o = groupPositions(Lg, gp); return o[2] ? {code:o[2], viaLogic:true} : null; }
   return null;
 }
 // code -> {opp, viaLogic} for every R32 fixture whose BOTH sides resolve to a team.
 function r32Opponents(){ if(!DATA) return {};
-  const gp = r32GroupPlayed(), mustIn = clinchedThirdGroups(), map = {};
+  const gp = r32GroupPlayed(), mustIn = clinchedThirdGroups(), mustOut = eliminatedThirdGroups(), map = {};
   for(const m of DATA.matches){ if(m.round !== "Round of 32") continue;
-    const s1 = resolveBracketSide(tname(m.team1), gp, mustIn), s2 = resolveBracketSide(tname(m.team2), gp, mustIn);
+    const s1 = resolveBracketSide(tname(m.team1), gp, mustIn, mustOut), s2 = resolveBracketSide(tname(m.team2), gp, mustIn, mustOut);
     if(!s1 || !s2 || !s1.code || !s2.code) continue;
     const via = s1.viaLogic || s2.viaLogic;
     map[s1.code] = {opp:s2.code, viaLogic:via}; map[s2.code] = {opp:s1.code, viaLogic:via};
@@ -873,8 +944,8 @@ function countdownStr(ms){
 function matchRow(m, now, followed){
   let c1=tcode(m.team1), c2=tcode(m.team2), lk1=false, lk2=false;
   if(!m.group && (!c1||!c2) && _r32ctx){ // fill pre-draw bracket placeholders ("1D", "3B/E/F/I/J", …)
-    if(!c1){ const r=resolveBracketSide(tname(m.team1), _r32ctx.gp, _r32ctx.mustIn); if(r&&r.code){ c1=r.code; lk1=r.viaLogic; } }
-    if(!c2){ const r=resolveBracketSide(tname(m.team2), _r32ctx.gp, _r32ctx.mustIn); if(r&&r.code){ c2=r.code; lk2=r.viaLogic; } }
+    if(!c1){ const r=resolveBracketSide(tname(m.team1), _r32ctx.gp, _r32ctx.mustIn, _r32ctx.mustOut); if(r&&r.code){ c1=r.code; lk1=r.viaLogic; } }
+    if(!c2){ const r=resolveBracketSide(tname(m.team2), _r32ctx.gp, _r32ctx.mustIn, _r32ctx.mustOut); if(r&&r.code){ c2=r.code; lk2=r.viaLogic; } }
   }
   const st = status(m, now), k = kickoff(m), fs = finalScore(m);
   const isF = (c1&&followed.has(c1))||(c2&&followed.has(c2));
@@ -903,7 +974,7 @@ function render(){
   const T = computeScores();
   const ms = DATA ? DATA.matches : [];
   // R32 matchup resolution context (shared by matchRow + the group/standings chips)
-  _r32ctx = DATA ? {gp:r32GroupPlayed(), mustIn:clinchedThirdGroups()} : null;
+  _r32ctx = DATA ? {gp:r32GroupPlayed(), mustIn:clinchedThirdGroups(), mustOut:eliminatedThirdGroups()} : null;
   const r32 = r32Opponents();
   const r32Chip = c => { const e=r32[c]; return e ? ` <span class="r32o" title="Round-of-32 opponent${e.viaLogic?" — locked via FIFA Annex C bracket before the feed seeds it":""}">→ R32 v <b>${BY_CODE[e.opp].flag} ${BY_CODE[e.opp].name}</b></span>` : ""; };
 
