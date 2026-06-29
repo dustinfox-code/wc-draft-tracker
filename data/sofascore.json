@@ -1,6 +1,6 @@
 {
-  "generated": "2026-06-15T00:32:33.590Z",
-  "count": 72,
+  "generated": "2026-06-29T19:15:13.810Z",
+  "count": 88,
   "events": [
     {
       "c": [
@@ -140,8 +140,8 @@
     },
     {
       "c": [
-        "NOR",
-        "IRQ"
+        "IRQ",
+        "NOR"
       ],
       "ts": 1781647200000,
       "url": "https://www.sofascore.com/football/match/iraq-norway/AObsrVb"
@@ -420,19 +420,19 @@
     },
     {
       "c": [
-        "CZE",
-        "MEX"
-      ],
-      "ts": 1782349200000,
-      "url": "https://www.sofascore.com/football/match/mexico-czechia/oUbsGVb"
-    },
-    {
-      "c": [
         "RSA",
         "KOR"
       ],
       "ts": 1782349200000,
       "url": "https://www.sofascore.com/football/match/south-africa-south-korea/KUbsLUb"
+    },
+    {
+      "c": [
+        "CZE",
+        "MEX"
+      ],
+      "ts": 1782349200000,
+      "url": "https://www.sofascore.com/football/match/mexico-czechia/oUbsGVb"
     },
     {
       "c": [
@@ -484,19 +484,19 @@
     },
     {
       "c": [
-        "NOR",
-        "FRA"
-      ],
-      "ts": 1782500400000,
-      "url": "https://www.sofascore.com/football/match/france-norway/AObsGOb"
-    },
-    {
-      "c": [
         "SEN",
         "IRQ"
       ],
       "ts": 1782500400000,
       "url": "https://www.sofascore.com/football/match/iraq-senegal/OUbsrVb"
+    },
+    {
+      "c": [
+        "NOR",
+        "FRA"
+      ],
+      "ts": 1782500400000,
+      "url": "https://www.sofascore.com/football/match/france-norway/AObsGOb"
     },
     {
       "c": [
@@ -516,19 +516,19 @@
     },
     {
       "c": [
-        "EGY",
-        "IRN"
-      ],
-      "ts": 1782529200000,
-      "url": "https://www.sofascore.com/football/match/iran-egypt/iVbsqVb"
-    },
-    {
-      "c": [
         "NZL",
         "BEL"
       ],
       "ts": 1782529200000,
       "url": "https://www.sofascore.com/football/match/new-zealand-belgium/rUbsJVb"
+    },
+    {
+      "c": [
+        "EGY",
+        "IRN"
+      ],
+      "ts": 1782529200000,
+      "url": "https://www.sofascore.com/football/match/iran-egypt/iVbsqVb"
     },
     {
       "c": [
@@ -548,19 +548,19 @@
     },
     {
       "c": [
-        "COL",
-        "POR"
-      ],
-      "ts": 1782603000000,
-      "url": "https://www.sofascore.com/football/match/colombia-portugal/eUbsvWb"
-    },
-    {
-      "c": [
         "COD",
         "UZB"
       ],
       "ts": 1782603000000,
       "url": "https://www.sofascore.com/football/match/dr-congo-uzbekistan/yUbsyWb"
+    },
+    {
+      "c": [
+        "COL",
+        "POR"
+      ],
+      "ts": 1782603000000,
+      "url": "https://www.sofascore.com/football/match/colombia-portugal/eUbsvWb"
     },
     {
       "c": [
@@ -577,6 +577,134 @@
       ],
       "ts": 1782612000000,
       "url": "https://www.sofascore.com/football/match/argentina-jordan/wVbsuWb"
+    },
+    {
+      "c": [
+        "RSA",
+        "CAN"
+      ],
+      "ts": 1782673200000,
+      "url": "https://www.sofascore.com/football/match/canada-south-africa/LUbscVb"
+    },
+    {
+      "c": [
+        "BRA",
+        "JPN"
+      ],
+      "ts": 1782752400000,
+      "url": "https://www.sofascore.com/football/match/japan-brazil/YUbsvVb"
+    },
+    {
+      "c": [
+        "GER",
+        "PAR"
+      ],
+      "ts": 1782765000000,
+      "url": "https://www.sofascore.com/football/match/paraguay-germany/lUbsOVb"
+    },
+    {
+      "c": [
+        "NED",
+        "MAR"
+      ],
+      "ts": 1782781200000,
+      "url": "https://www.sofascore.com/football/match/morocco-netherlands/fUbsDVb"
+    },
+    {
+      "c": [
+        "CIV",
+        "NOR"
+      ],
+      "ts": 1782838800000,
+      "url": "https://www.sofascore.com/football/match/cote-divoire-norway/AObstVb"
+    },
+    {
+      "c": [
+        "FRA",
+        "SWE"
+      ],
+      "ts": 1782853200000,
+      "url": "https://www.sofascore.com/football/match/sweden-france/GObsNTb"
+    },
+    {
+      "c": [
+        "MEX",
+        "ECU"
+      ],
+      "ts": 1782867600000,
+      "url": "https://www.sofascore.com/football/match/mexico-ecuador/hVbsGVb"
+    },
+    {
+      "c": [
+        "ENG",
+        "COD"
+      ],
+      "ts": 1782921600000,
+      "url": "https://www.sofascore.com/football/match/dr-congo-england/nUbsyWb"
+    },
+    {
+      "c": [
+        "BEL",
+        "SEN"
+      ],
+      "ts": 1782936000000,
+      "url": "https://www.sofascore.com/football/match/senegal-belgium/rUbsOUb"
+    },
+    {
+      "c": [
+        "USA",
+        "BIH"
+      ],
+      "ts": 1782950400000,
+      "url": "https://www.sofascore.com/football/match/usa-bosnia-and-herzegovina/EObszUb"
+    },
+    {
+      "c": [
+        "ESP",
+        "AUT"
+      ],
+      "ts": 1783018800000,
+      "url": "https://www.sofascore.com/football/match/austria-spain/YTbstUb"
+    },
+    {
+      "c": [
+        "POR",
+        "CRO"
+      ],
+      "ts": 1783033200000,
+      "url": "https://www.sofascore.com/football/match/croatia-portugal/eUbspUb"
+    },
+    {
+      "c": [
+        "SUI",
+        "ALG"
+      ],
+      "ts": 1783047600000,
+      "url": "https://www.sofascore.com/football/match/switzerland-algeria/QTbsZTb"
+    },
+    {
+      "c": [
+        "AUS",
+        "EGY"
+      ],
+      "ts": 1783101600000,
+      "url": "https://www.sofascore.com/football/match/egypt-australia/QUbsiVb"
+    },
+    {
+      "c": [
+        "ARG",
+        "CPV"
+      ],
+      "ts": 1783116000000,
+      "url": "https://www.sofascore.com/football/match/argentina-cabo-verde/dVbsuWb"
+    },
+    {
+      "c": [
+        "COL",
+        "GHA"
+      ],
+      "ts": 1783128600000,
+      "url": "https://www.sofascore.com/football/match/colombia-ghana/oVbsvWb"
     }
   ]
 }

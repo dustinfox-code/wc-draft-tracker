@@ -16,10 +16,18 @@
 //   4. Move that file to data/sofascore.json in the repo, commit, push.
 //
 // Re-run after each knockout round's draw resolves to pick up new fixtures.
+//
+// SOURCE: the per-date /api/v1/sport/football/scheduled-events/{date} endpoint
+// was retired by Sofascore (it now 404s for every date). We read the World Cup
+// season directly instead:
+//   /api/v1/unique-tournament/16/season/58210/events/{last|next}/{page}
+// 16 = FIFA World Cup (men), 58210 = the 2026 season. "last" = played/live,
+// "next" = upcoming; page each from 0 until a 404, then merge. If Sofascore
+// ever re-IDs the season, get the new id from
+//   /api/v1/unique-tournament/16/seasons
 // ============================================================================
 (async () => {
-  const WC_UNIQUE_TOURNAMENT_ID = 16, SEASON_YEAR = "2026";
-  const START = "2026-06-11", END = "2026-07-19";
+  const UT_ID = 16, SEASON_ID = 58210;
 
   const KNOWN = new Set(
     "ARG ESP ENG FRA BRA GER POR MEX COL BEL NED NOR SUI CAN TUR ECU URU USA CRO JPN MAR SEN PAR AUT EGY SCO CZE KOR BIH IRN CIV SWE ALG PAN AUS COD RSA UZB NZL TUN KSA CPV GHA JOR HAI IRQ QAT CUW".split(" ")
@@ -56,41 +64,47 @@
   // skip them quietly instead of flagging them as unresolved real countries.
   const isPlaceholder = n => !n || /[0-9/]/.test(n);
 
-  const dates = [];
-  for(let d = new Date(START+"T00:00:00Z"), last = new Date(END+"T00:00:00Z"); d <= last; d.setUTCDate(d.getUTCDate()+1))
-    dates.push(d.toISOString().slice(0,10));
+  // Page an events feed ("last" = played/live, "next" = upcoming) until a 404,
+  // which is how Sofascore signals "no more pages".
+  async function fetchFeed(kind){
+    const out = [];
+    for(let page = 0; page < 50; page++){            // guard: WC is ~104 matches
+      const r = await fetch(`/api/v1/unique-tournament/${UT_ID}/season/${SEASON_ID}/events/${kind}/${page}`, { headers: { accept: "application/json" } });
+      if(r.status === 404) break;                    // paged past the last page
+      if(!r.ok){ console.warn(kind, "page", page, "HTTP", r.status); break; }
+      const evs = (await r.json()).events || [];
+      if(!evs.length) break;
+      out.push(...evs);
+      await new Promise(r => setTimeout(r, 150));     // be polite
+    }
+    return out;
+  }
 
   const byId = new Map(), unresolved = new Set();
-  let scanned = 0, blocked = 0;
-  for(const date of dates){
-    try{
-      const r = await fetch(`/api/v1/sport/football/scheduled-events/${date}`, { headers: { accept: "application/json" } });
-      if(r.status === 404) continue;
-      if(!r.ok){ blocked++; console.warn(date, "HTTP", r.status); continue; }
-      const events = (await r.json()).events || [];
-      scanned += events.length;
-      for(const e of events){
-        if(e.tournament?.uniqueTournament?.id !== WC_UNIQUE_TOURNAMENT_ID) continue;
-        if(e.season?.year && e.season.year !== SEASON_YEAR) continue;
-        const c1 = code(e.homeTeam), c2 = code(e.awayTeam);
-        if(!c1 && !isPlaceholder(e.homeTeam?.name)) unresolved.add(`${e.homeTeam?.name} [${e.homeTeam?.nameCode}]`);
-        if(!c2 && !isPlaceholder(e.awayTeam?.name)) unresolved.add(`${e.awayTeam?.name} [${e.awayTeam?.nameCode}]`);
-        if(!c1 || !c2 || !e.customId || !e.slug) continue;
-        byId.set(e.customId, {
-          c: [c1, c2],
-          ts: e.startTimestamp * 1000,
-          url: `https://www.sofascore.com/football/match/${e.slug}/${e.customId}`,
-        });
-      }
-    }catch(err){ console.warn(date, err.message); }
-    await new Promise(r => setTimeout(r, 150)); // be polite
+  let scanned = 0;
+  for(const kind of ["last", "next"]){
+    let evs = [];
+    try{ evs = await fetchFeed(kind); }
+    catch(err){ console.warn(kind, err.message); }
+    scanned += evs.length;
+    for(const e of evs){
+      const c1 = code(e.homeTeam), c2 = code(e.awayTeam);
+      if(!c1 && !isPlaceholder(e.homeTeam?.name)) unresolved.add(`${e.homeTeam?.name} [${e.homeTeam?.nameCode}]`);
+      if(!c2 && !isPlaceholder(e.awayTeam?.name)) unresolved.add(`${e.awayTeam?.name} [${e.awayTeam?.nameCode}]`);
+      if(!c1 || !c2 || !e.customId || !e.slug) continue;
+      byId.set(e.customId, {                          // dedupe if a match is in both feeds
+        c: [c1, c2],
+        ts: e.startTimestamp * 1000,
+        url: `https://www.sofascore.com/football/match/${e.slug}/${e.customId}`,
+      });
+    }
   }
 
   const events = [...byId.values()].sort((a, b) => a.ts - b.ts);
   const json = JSON.stringify({ generated: new Date().toISOString(), count: events.length, events }, null, 2) + "\n";
-  console.log(`%c✓ ${events.length} World Cup matches`, "color:#56d364;font-weight:bold", `(scanned ${scanned} events, ${blocked} blocked dates)`);
+  console.log(`%c✓ ${events.length} World Cup matches`, "color:#56d364;font-weight:bold", `(scanned ${scanned} events)`);
   if(unresolved.size) console.warn("⚠ unresolved teams (add to NAME_TO_CODE / CODE_ALIAS, then re-run):", [...unresolved]);
-  if(blocked && !events.length) console.warn("All dates blocked — make sure you're running this ON www.sofascore.com, not another site.");
+  if(!events.length) console.warn("No matches found — if you saw HTTP 403, run this ON www.sofascore.com; if every page 404'd, the season id may have changed (check /api/v1/unique-tournament/16/seasons).");
 
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));

@@ -18,6 +18,15 @@
 // always works, use scripts/harvest-sofascore-console.js in your browser's
 // devtools instead — see README "Updating the Sofascore links".
 //
+// SOURCE: the per-date /api/v1/sport/football/scheduled-events/{date} endpoint
+// was retired by Sofascore (it now 404s for every date). We read the World Cup
+// season directly instead:
+//   /api/v1/unique-tournament/16/season/58210/events/{last|next}/{page}
+// 16 = FIFA World Cup (men), 58210 = the 2026 season. "last" = played/live,
+// "next" = upcoming; page each from 0 until a 404, then merge. If Sofascore
+// ever re-IDs the season, get the new id from
+//   /api/v1/unique-tournament/16/seasons
+//
 // Usage:  node scripts/harvest-sofascore.mjs
 // Requires Node 18+ (built-in fetch). No dependencies.
 // ============================================================================
@@ -26,10 +35,9 @@ import { writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-const WC_UNIQUE_TOURNAMENT_ID = 16;        // FIFA World Cup (men)
-const SEASON_YEAR = "2026";
-const START = "2026-06-11";                // tournament window (inclusive)
-const END   = "2026-07-19";
+const UT_ID = 16;                          // FIFA World Cup (men), unique-tournament id
+const SEASON_ID = 58210;                   // the 2026 season
+const BASE = "https://www.sofascore.com";
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "data", "sofascore.json");
 
 // Sofascore's team `nameCode` already equals our FIFA code in almost every
@@ -73,12 +81,6 @@ function resolveCode(team){
 // skip them quietly instead of flagging them as unresolved real countries.
 const isPlaceholder = n => !n || /[0-9/]/.test(n);
 
-function dateRange(start, end){
-  const out = [], d = new Date(start+"T00:00:00Z"), last = new Date(end+"T00:00:00Z");
-  while(d <= last){ out.push(d.toISOString().slice(0,10)); d.setUTCDate(d.getUTCDate()+1); }
-  return out;
-}
-
 const HEADERS = {
   "User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
   "Accept":"application/json",
@@ -86,26 +88,33 @@ const HEADERS = {
 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function fetchDate(date){
-  const url = `https://www.sofascore.com/api/v1/sport/football/scheduled-events/${date}`;
-  const r = await fetch(url, { headers: HEADERS });
-  if(r.status === 404) return [];                 // no events bucketed on this date
-  if(!r.ok) throw new Error(`${date}: HTTP ${r.status}`);
-  return (await r.json()).events || [];
+// Page an events feed ("last" = played/live, "next" = upcoming) until a 404,
+// which is how Sofascore signals "no more pages".
+async function fetchFeed(kind){
+  const out = [];
+  for(let page = 0; page < 50; page++){            // guard: WC is ~104 matches
+    const url = `${BASE}/api/v1/unique-tournament/${UT_ID}/season/${SEASON_ID}/events/${kind}/${page}`;
+    const r = await fetch(url, { headers: HEADERS });
+    if(r.status === 404) break;                    // paged past the last page
+    if(!r.ok) throw new Error(`${kind} page ${page}: HTTP ${r.status}`);
+    const evs = (await r.json()).events || [];
+    if(!evs.length) break;
+    out.push(...evs);
+    await sleep(400);                              // be polite
+  }
+  return out;
 }
 
 async function main(){
-  const byId = new Map();          // customId → entry (dedupe across date buckets)
+  const byId = new Map();          // customId → entry (dedupe across feeds)
   const unresolved = new Set();
   let scanned = 0;
-  for(const date of dateRange(START, END)){
+  for(const kind of ["last", "next"]){
     let events;
-    try{ events = await fetchDate(date); }
-    catch(e){ console.error(`! ${e.message} — skipping`); await sleep(1500); continue; }
+    try{ events = await fetchFeed(kind); }
+    catch(e){ console.error(`! ${e.message} — skipping rest of "${kind}"`); await sleep(1500); continue; }
     scanned += events.length;
     for(const e of events){
-      if(e.tournament?.uniqueTournament?.id !== WC_UNIQUE_TOURNAMENT_ID) continue;
-      if(e.season?.year && e.season.year !== SEASON_YEAR) continue;
       const c1 = resolveCode(e.homeTeam), c2 = resolveCode(e.awayTeam);
       if(!c1 && !isPlaceholder(e.homeTeam?.name)) unresolved.add(`${e.homeTeam?.name} [${e.homeTeam?.nameCode}]`);
       if(!c2 && !isPlaceholder(e.awayTeam?.name)) unresolved.add(`${e.awayTeam?.name} [${e.awayTeam?.nameCode}]`);
@@ -116,7 +125,6 @@ async function main(){
         url: `https://www.sofascore.com/football/match/${e.slug}/${e.customId}`,
       });
     }
-    await sleep(400);              // be polite
   }
   const events = [...byId.values()].sort((a, b) => a.ts - b.ts);
   await writeFile(OUT, JSON.stringify({ generated: new Date().toISOString(), count: events.length, events }, null, 2) + "\n");
@@ -124,7 +132,7 @@ async function main(){
   if(unresolved.size)
     console.warn(`⚠ unresolved teams (add to NAME_TO_CODE / CODE_ALIAS, then re-run):\n  ${[...unresolved].join("\n  ")}`);
   if(!events.length)
-    console.warn("⚠ no World Cup matches found. If this is a 403/Cloudflare issue, retry (residential IP, VPN off).");
+    console.warn("⚠ no World Cup matches found. If this is a 403/Cloudflare issue, retry behind curl-impersonate (or use the browser-console script). If every page 404'd, the season id may have changed — check /api/v1/unique-tournament/16/seasons.");
 }
 
 main().catch(e => { console.error(e); process.exit(1); });
