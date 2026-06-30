@@ -1,6 +1,6 @@
 {
-  "generated": "2026-06-29T19:15:13.810Z",
-  "count": 88,
+  "generated": "2026-06-30T19:24:04.250Z",
+  "count": 104,
   "events": [
     {
       "c": [
@@ -705,6 +705,94 @@
       ],
       "ts": 1783128600000,
       "url": "https://www.sofascore.com/football/match/colombia-ghana/oVbsvWb"
+    },
+    {
+      "c": [
+        "CAN",
+        "MAR"
+      ],
+      "ts": 1783184400000,
+      "url": "https://www.sofascore.com/football/match/morocco-canada/cVbsDVb"
+    },
+    {
+      "c": [
+        "PAR"
+      ],
+      "ts": 1783198800000,
+      "url": "https://www.sofascore.com/football/match/w77-paraguay/OVbsueWg"
+    },
+    {
+      "c": [
+        "BRA",
+        "NOR"
+      ],
+      "ts": 1783281600000,
+      "url": "https://www.sofascore.com/football/match/brazil-norway/AObsYUb"
+    },
+    {
+      "c": [],
+      "ts": 1783296000000,
+      "url": "https://www.sofascore.com/football/match/w80-w79/leWgsoeWg"
+    },
+    {
+      "c": [],
+      "ts": 1783364400000,
+      "url": "https://www.sofascore.com/football/match/w84-w83/ZdWgsceWg"
+    },
+    {
+      "c": [],
+      "ts": 1783382400000,
+      "url": "https://www.sofascore.com/football/match/w82-w81/jeWgsneWg"
+    },
+    {
+      "c": [],
+      "ts": 1783440000000,
+      "url": "https://www.sofascore.com/football/match/w88-w86/MdWgsPdWg"
+    },
+    {
+      "c": [],
+      "ts": 1783454400000,
+      "url": "https://www.sofascore.com/football/match/w87-w85/YdWgsaeWg"
+    },
+    {
+      "c": [],
+      "ts": 1783627200000,
+      "url": "https://www.sofascore.com/football/match/w90-w89/ieWgsmeWg"
+    },
+    {
+      "c": [],
+      "ts": 1783710000000,
+      "url": "https://www.sofascore.com/football/match/w94-w93/feWgsgeWg"
+    },
+    {
+      "c": [],
+      "ts": 1783803600000,
+      "url": "https://www.sofascore.com/football/match/w92-w91/yeWgszeWg"
+    },
+    {
+      "c": [],
+      "ts": 1783818000000,
+      "url": "https://www.sofascore.com/football/match/w96-w95/RdWgsVdWg"
+    },
+    {
+      "c": [],
+      "ts": 1784055600000,
+      "url": "https://www.sofascore.com/football/match/w98-w97/TdWgsWdWg"
+    },
+    {
+      "c": [],
+      "ts": 1784142000000,
+      "url": "https://www.sofascore.com/football/match/w100-w99/NdWgsQdWg"
+    },
+    {
+      "c": [],
+      "ts": 1784408400000,
+      "url": "https://www.sofascore.com/football/match/l102-l101/heWgskeWg"
+    },
+    {
+      "c": [],
+      "ts": 1784487600000,
+      "url": "https://www.sofascore.com/football/match/w102-w101/beWgseeWg"
     }
   ]
 }

@@ -458,10 +458,14 @@ function applyESPN(){
 // ============================================================================
 // Sofascore deep links — full live + post-match stats per game
 // Sofascore's API is Cloudflare-gated with no CORS, so the browser can't read
-// it; instead scripts/harvest-sofascore.mjs (run from a residential IP) writes
-// data/sofascore.json mapping each fixture to its match-page URL. We match the
-// same way as ESPN: both team codes present + kickoff within a day. Best-effort
-// — if the file is absent or empty, scores just render without a link.
+// it; instead the harvest scripts (scripts/harvest-sofascore*.js) write
+// data/sofascore.json mapping each fixture to its match-page URL. Group games
+// match on both team codes + kickoff within a day; knockout games match on
+// kickoff time alone — it's unique per slot (no two knockout fixtures are within
+// 3.5h, and Sofascore's times match the feed exactly), so a pre-harvested
+// placeholder slot (teams still TBD: "w98-w97") links up the moment the draw
+// resolves, no re-harvest needed. Best-effort — if the file is absent/empty,
+// scores just render without a link.
 // ============================================================================
 let SOFA = []; // [{c:[code,code], ts:epochMs, url}]
 async function loadSofascore(){
@@ -476,9 +480,19 @@ async function loadSofascore(){
 function sofaUrl(m){
   if(!SOFA.length) return null;
   const c1=tcode(m.team1), c2=tcode(m.team2), k=kickoff(m);
-  if(!c1 || !c2 || !k) return null;
-  const e = SOFA.find(e=>e.c.includes(c1) && e.c.includes(c2) && Math.abs(e.ts-k) < 36*3600000);
-  return e ? e.url : null;
+  if(!k) return null;
+  // Group + already-resolved matches: exact on both team codes, within the day.
+  if(c1 && c2){
+    const e = SOFA.find(e=>e.c && e.c.includes(c1) && e.c.includes(c2) && Math.abs(e.ts-k) < 36*3600000);
+    if(e) return e.url;
+  }
+  // Knockout slots: kickoff is unique per fixture, so match on time alone — this
+  // is what links a placeholder slot harvested before its teams were drawn.
+  if(!m.group){
+    const e = SOFA.filter(e=>Math.abs(e.ts-k) < 90*60000).sort((a,b)=>Math.abs(a.ts-k)-Math.abs(b.ts-k))[0];
+    if(e) return e.url;
+  }
+  return null;
 }
 
 // ============================================================================
