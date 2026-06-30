@@ -17,8 +17,19 @@ Live results, league standings, and a "which game do I watch next" banner for an
      2 minutes). Feeds win once they carry a score; ESPN covers the gap.
   3. **Bundled snapshot** (`data/worldcup.json`) as last resort.
 
-  Renders standings, group tables, schedule, and a next-match countdown for
-  whichever manager's teams (plus any extra teams) the viewer follows.
+  Renders standings, a knockout bracket, group tables, schedule, and a
+  next-match countdown for whichever manager's teams (plus any extra teams)
+  the viewer follows.
+
+  The **knockout bracket** is a full-width split/mirrored view (two halves
+  converging on the center final) built straight from the feed's match
+  numbers — R32 = 73–88, R16 = 89–96 (`Wxx vs Wxx`), QF = 97–100, SF =
+  101–102, third place = 103, Final = 104 — so winners advance automatically
+  as games resolve. It reuses the same helpers as the match list (`winnerIdx`
+  incl. penalties, `finalScore`, `status`, `sofaUrl`, `ownerChip`): cells go
+  live, winners bold, pending slots show their two possible teams until the
+  feeding game finishes. Note the live mirror leaves `num` null on the Final
+  and third-place match, so those two are mapped by round name as a fallback.
 
   Standings also show a **live projected final total** per manager: Silver
   Bulletin republishes his Datawrapper charts nightly after each matchday, and
