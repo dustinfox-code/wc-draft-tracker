@@ -8,7 +8,7 @@
   :root {
     --bg:#0f1419; --card:#1a2129; --card2:#212b36; --text:#e8edf2; --muted:#8b98a5;
     --accent:#2f81f7; --green:#56d364; --gold:#e3b341; --red:#f85149; --track:#28323d;
-    --line:#3a4654; --bk-cellw:150px; --bk-cw:24px; --bk-slot:80px;
+    --line:#3a4654; --bk-cellw:168px; --bk-cw:24px; --bk-slot:80px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:16px}
@@ -113,26 +113,25 @@
 
   /* ===== knockout bracket ===== */
   .bk-scroll{overflow-x:auto;padding:4px 2px 10px;scrollbar-color:var(--track) transparent}
-  .bk-grid{display:flex;align-items:center;justify-content:center;width:max-content;margin:0 auto;padding:2px 4px}
-  .bk-half{display:flex;align-items:center}
-  .bk-center{margin:0 var(--bk-cw);display:flex;flex-direction:column;align-items:center;justify-content:center}
+  /* ESPN-style: both halves of the draw STACKED vertically, flowing left→right into a
+     centered Final. That is exactly the whole tree rooted at the final, so it renders as
+     one left-aligned left→right tree — reusing the single-direction connector set below. */
+  .bk-heads{display:flex;width:max-content;padding:0 4px 8px}
+  .bk-heads span{width:var(--bk-cellw);margin-right:var(--bk-cw);text-align:center;font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--gold)}
+  .bk-heads span:last-child{margin-right:0}
+  .bk-grid{display:flex;align-items:center;width:max-content;padding:2px 4px}
   .bk-node{display:flex;align-items:center}
-  .bk-right .bk-node{flex-direction:row-reverse}
   .bk-feeders{display:flex;flex-direction:column;position:relative}
   .bk-leaf{min-height:var(--bk-slot);justify-content:center}
   .bk-cw{position:relative;display:flex;align-items:center}
   .bk-branch>.bk-cw{margin-left:var(--bk-cw)}
-  .bk-right .bk-branch>.bk-cw{margin-left:0;margin-right:var(--bk-cw)}
-  /* connectors — left half */
+  /* connectors: every cell links rightward to its parent's junction; each branch draws
+     the vertical junction feeding it (the root final's is the big top↔bottom-half join) */
   .bk-node>.bk-cw::after{content:"";position:absolute;left:100%;width:calc(var(--bk-cw)/2);top:50%;border-top:2px solid var(--line)}
   .bk-branch>.bk-feeders::after{content:"";position:absolute;left:100%;margin-left:calc(var(--bk-cw)/2);width:0;top:25%;height:50%;border-left:2px solid var(--line)}
   .bk-branch>.bk-cw::before{content:"";position:absolute;right:100%;width:calc(var(--bk-cw)/2);top:50%;border-top:2px solid var(--line)}
-  /* connectors — right half (mirrored) */
-  .bk-right .bk-node>.bk-cw::after{left:auto;right:100%}
-  .bk-right .bk-branch>.bk-feeders::after{left:auto;right:100%;margin-left:0;margin-right:calc(var(--bk-cw)/2)}
-  .bk-right .bk-branch>.bk-cw::before{right:auto;left:100%}
-  .bk-finalwrap .bk-cell::before{content:"";position:absolute;right:100%;width:calc(var(--bk-cw)/2);top:50%;border-top:2px solid var(--line)}
-  .bk-finalwrap .bk-cell::after{content:"";position:absolute;left:100%;width:calc(var(--bk-cw)/2);top:50%;border-top:2px solid var(--line)}
+  /* the final is the tree root: no stub past it — the champion sits to its right instead */
+  .bk-root>.bk-cw::after{content:none}
   /* match cell */
   .bk-cell{width:var(--bk-cellw);background:var(--card2);border:1px solid #2a3542;border-radius:8px;padding:5px 7px;position:relative}
   .bk-cell.bk-live{border-color:#5a2c33;background:linear-gradient(110deg,#2a1c1f,var(--card2))}
@@ -148,16 +147,18 @@
   .bk-team.bk-win .bk-sc{color:var(--green)}
   .bk-team.bk-lose{opacity:.4}
   .bk-team .owner{vertical-align:0}
-  .bk-foot{margin-top:3px;font-size:.54rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:flex;justify-content:space-between;gap:6px}
+  .bk-foot{margin-top:3px;font-size:.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+  .bk-foot .bk-rnd{flex:none}
+  .bk-foot .bk-when{flex:1;min-width:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:none;letter-spacing:0}
   .bk-foot .bk-liveT{color:var(--red);font-weight:700}
   .bk-sofa{color:var(--muted);text-decoration:none}
   .bk-sofa:hover{color:var(--gold)}
   .bk-finalwrap .bk-cell{border-color:#caa53e;background:linear-gradient(120deg,#241f12,var(--card2))}
   .bk-rl{font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;color:var(--gold);font-weight:700;margin-bottom:5px;text-align:center}
   .bk-rl.bk-rl-muted{color:var(--muted)}
-  .bk-champ{margin-top:8px;text-align:center;font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-  .bk-champ b{color:var(--gold);display:block;font-size:.82rem;margin-top:2px;text-transform:none;letter-spacing:0}
-  .bk-third{display:flex;flex-direction:column;align-items:center;margin:16px auto 0;gap:5px}
+  .bk-champ{margin-left:var(--bk-cw);flex:none;width:118px;text-align:center;font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  .bk-champ b{color:var(--gold);display:block;font-size:.8rem;margin-top:3px;text-transform:none;letter-spacing:0;line-height:1.2}
+  .bk-third{display:flex;flex-direction:column;align-items:flex-start;margin:18px 0 0;gap:5px;padding-left:4px}
   .bk-third .bk-cw{display:inline-flex}
 </style>
 </head>
@@ -190,7 +191,7 @@
   </div>
 
   <div class="panel">
-    <h2><span>Knockout bracket</span> <span class="small" style="margin:0;font-weight:400;text-transform:none;letter-spacing:0">winner in bold · ↗ opens Sofascore · scroll sideways to follow the path to the final →</span></h2>
+    <h2><span>Knockout bracket</span> <span class="small" style="margin:0;font-weight:400;text-transform:none;letter-spacing:0">winner in bold · ↗ opens Sofascore · both halves flow left → right into the final</span></h2>
     <div class="bk-scroll"><div id="bracket"></div></div>
     <p class="small">Pending slots show their two possible teams (e.g. 🇫🇷 France / 🇸🇪 Sweden) until the feeding game finishes, then resolve automatically. Owner chips show who drafted each team. The third-place play-off is shown for completeness but isn't scored.</p>
   </div>
@@ -997,6 +998,7 @@ const ownerChip = code => {
 };
 const fmtDay = d => d.toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"});
 const fmtTime = d => d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+const fmtDT = d => `${fmtDay(d)} · ${fmtTime(d)}`;
 
 function countdownStr(ms){
   if(ms<=0) return "now";
@@ -1147,15 +1149,18 @@ function bkCell(num, now, followed){
   if(st==="live") mid=`<span class="bk-liveT">LIVE${m._live&&m._live.detail?" "+m._live.detail:""}</span>`;
   else if(st==="await") mid="awaiting";
   else if(st==="done") mid=scoreNote(m)||"FT";
-  else mid=k?fmtDay(k):"TBD";
+  else mid=k?fmtDT(k):"TBD";
   const arrow=su?` <a class="bk-sofa" href="${su}" target="_blank" rel="noopener" title="Live stats &amp; summary on Sofascore">↗</a>`:"";
-  const foot=`<div class="bk-foot"><span>${BK_RS[m.round]||""}</span><span>${mid}${arrow}</span></div>`;
+  const foot=`<div class="bk-foot"><span class="bk-rnd">${BK_RS[m.round]||""}</span><span class="bk-when">${mid}${arrow}</span></div>`;
   return `<div class="bk-cell bk-${st}${hasFoll?" bk-hasfoll":""}">${row(sa,0)}${row(sb,1)}${foot}</div>`;
 }
-function bkNode(num, now, followed){
-  const kids=BK_CH[num], cw=`<div class="bk-cw">${bkCell(num,now,followed)}</div>`;
+function bkNode(num, now, followed, champHtml){
+  const isFinal=num===104, kids=isFinal?[101,102]:BK_CH[num];
+  const cw=`<div class="bk-cw${isFinal?" bk-finalwrap":""}">${bkCell(num,now,followed)}</div>`;
   if(!kids) return `<div class="bk-node bk-leaf">${cw}</div>`;
-  return `<div class="bk-node bk-branch"><div class="bk-feeders">${bkNode(kids[0],now,followed)}${bkNode(kids[1],now,followed)}</div>${cw}</div>`;
+  // The final is the tree root: 101/102 feed it, so the top & bottom halves stack
+  // vertically and the champion callout rides alongside it on the right.
+  return `<div class="bk-node bk-branch${isFinal?" bk-root":""}"><div class="bk-feeders">${bkNode(kids[0],now,followed)}${bkNode(kids[1],now,followed)}</div>${cw}${champHtml||""}</div>`;
 }
 function renderBracket(now){
   const host=document.getElementById("bracket"); if(!host) return;
@@ -1163,16 +1168,14 @@ function renderBracket(now){
   buildBkNum();
   if(!BK_NUM[104]||!BK_NUM[101]||!BK_NUM[102]){ host.innerHTML=`<p class="small">The bracket appears once the knockout fixtures are published in the feed.</p>`; return; }
   const followed=followedCodes();
-  const champ=bkWinner(104), fk=kickoff(BK_NUM[104]), tk=BK_NUM[103]?kickoff(BK_NUM[103]):null;
-  const center=`<div class="bk-rl">Final${fk?" · "+fmtDay(fk):""}</div>
-    <div class="bk-cw bk-finalwrap">${bkCell(104,now,followed)}</div>
-    <div class="bk-champ">Champion<b>${champ?`${BY_CODE[champ.code].flag} ${BY_CODE[champ.code].name} 🏆`:"to be decided 🏆"}</b></div>`;
-  const third=BK_NUM[103]?`<div class="bk-third"><div class="bk-rl bk-rl-muted">Third place${tk?" · "+fmtDay(tk):""}</div><div class="bk-cw">${bkCell(103,now,followed)}</div></div>`:"";
-  host.innerHTML=`<div class="bk-grid">
-      <div class="bk-half bk-left">${bkNode(101,now,followed)}</div>
-      <div class="bk-center">${center}</div>
-      <div class="bk-half bk-right">${bkNode(102,now,followed)}</div>
-    </div>${third}`;
+  const champ=bkWinner(104);
+  const champHtml=`<div class="bk-champ">Champion<b>${champ?`${BY_CODE[champ.code].flag} ${BY_CODE[champ.code].name} 🏆`:"to be decided 🏆"}</b></div>`;
+  // Stacked ESPN layout = the whole tree rooted at the final (104 → 101/102): both
+  // halves of the draw run left→right and meet at a centered final on the right.
+  const heads=`<div class="bk-heads"><span>Round of 32</span><span>Round of 16</span><span>Quarterfinals</span><span>Semifinals</span><span>Final</span></div>`;
+  const tree=`<div class="bk-grid">${bkNode(104,now,followed,champHtml)}</div>`;
+  const third=BK_NUM[103]?`<div class="bk-third"><div class="bk-rl bk-rl-muted">Third-place play-off</div><div class="bk-cw">${bkCell(103,now,followed)}</div></div>`:"";
+  host.innerHTML=heads+tree+third;
 }
 
 function render(){
