@@ -56,8 +56,6 @@
   .mgr-row.open .detail{display:block}
   .mgr-row .detail .maxsum{font-size:.72rem;color:var(--muted);line-height:1.55;margin-bottom:8px}
   .mgr-row .detail .maxsum b{color:var(--gold);font-variant-numeric:tabular-nums}
-  .mgr-row .detail .maxsum .st-out{color:var(--red);font-weight:600}
-  .mgr-row .detail .maxsum .st-win{color:var(--green);font-weight:600}
   .mgr-row .detail table{width:100%;border-collapse:collapse;font-size:.78rem}
   .mgr-row .detail td,.mgr-row .detail th{padding:3px 4px;text-align:right;font-variant-numeric:tabular-nums}
   .mgr-row .detail td:first-child,.mgr-row .detail th:first-child{text-align:left}
@@ -1295,25 +1293,13 @@ function render(){
     const codes=(ROSTERS[row.mgr.name]||[]).slice().sort((a,b)=>T[b].pts-T[a].pts || evFor(b)-evFor(a));
     const isYou=row.mgr.name===prefs.manager, open=expanded.has(row.mgr.name);
     const delta=row.proj-row.preEV;
-    // Best-case ceiling + race status (uses the bracket-walk max). "Ceiling" is
-    // banked + the most a manager can still win if every remaining game breaks
-    // their way; a rival's banked already above your ceiling means they can't be
-    // caught. Only rendered inside .detail, so it shows only when a row is opened.
-    const others = totals.filter(x=>x!==row);
-    const aheadForGood = others.filter(x=>x.pts > row.ceiling).sort((a,b)=>b.pts-a.pts);
-    const clinchedFirst = others.every(x=>x.ceiling < row.pts);
-    const maxLine = row.maxLeft>0
-      ? `Best case: <b>+${row.maxLeft}</b> if every remaining game breaks their way → ceiling <b>${row.ceiling}</b>.`
-      : `All teams eliminated — <b>${row.pts}</b> is final.`;
-    const status = clinchedFirst
-      ? ` <span class="st-win">🏆 Clinched 1st — no one else can reach ${row.pts}.</span>`
-      : aheadForGood.length
-        ? ` <span class="st-out">Out of the race for 1st — ${aheadForGood[0].mgr.short} already has ${aheadForGood[0].pts} banked, above this ceiling.</span>`
-        : "";
+    // Best-case final total = banked + the most still winnable (bracket walk).
+    // Only rendered inside .detail, so it shows only when a row is opened.
+    const maxLine = `Max possible total: <b>${row.ceiling}</b>`;
     return `<div class="mgr-row ${isYou?"you-row":""} ${open?"open":""}" data-mgr="${row.mgr.name}">
       <div class="top"><span>#${i+1} <span style="color:${row.mgr.color}">${isYou?"⭐ ":""}${row.mgr.name}</span></span><span class="pts">${row.pts}${uBadge(row.unconf)} <span style="font-size:.7rem;color:var(--muted)">proj ${row.proj.toFixed(1)} <span style="color:${delta>=0?"var(--green)":"var(--red)"}">(${delta>=0?"+":""}${delta.toFixed(1)} vs draft)</span></span></span></div>
       <div class="teams">${codes.map(c=>`${BY_CODE[c].flag} ${c} ${T[c].pts}`).join(" · ")}</div>
-      <div class="detail"><div class="maxsum">${maxLine}${status}</div><table>
+      <div class="detail"><div class="maxsum">${maxLine}</div><table>
         <tr><th>Team</th><th>Grp pts</th><th>W-D-L</th><th>Adv</th><th>KO wins</th><th>Banked</th><th>Proj</th></tr>
         ${codes.map(c=>{const t=T[c];return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":t.clinchAdv?`<span class="unconf" title="Clinched a knockout berth — +4 unconfirmed until the bracket is seeded">+4</span>`:"—"}</td><td>${t.koWins.length?t.koWins.map(r=>r==="Final"?"F(+10)":"+5").join(" "):"—"}</td><td><b>${t.pts}</b></td><td style="color:var(--muted)">${evFor(c).toFixed(1)}</td></tr>`;}).join("")}
       </table></div>
