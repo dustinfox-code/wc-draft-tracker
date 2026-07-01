@@ -54,6 +54,10 @@
   .mgr-row .teams{color:var(--muted);font-size:.76rem;margin-top:4px;line-height:1.7}
   .mgr-row .detail{display:none;margin-top:8px;border-top:1px solid #2c3845;padding-top:6px}
   .mgr-row.open .detail{display:block}
+  .mgr-row .detail .maxsum{font-size:.72rem;color:var(--muted);line-height:1.55;margin-bottom:8px}
+  .mgr-row .detail .maxsum b{color:var(--gold);font-variant-numeric:tabular-nums}
+  .mgr-row .detail .maxsum .st-out{color:var(--red);font-weight:600}
+  .mgr-row .detail .maxsum .st-win{color:var(--green);font-weight:600}
   .mgr-row .detail table{width:100%;border-collapse:collapse;font-size:.78rem}
   .mgr-row .detail td,.mgr-row .detail th{padding:3px 4px;text-align:right;font-variant-numeric:tabular-nums}
   .mgr-row .detail td:first-child,.mgr-row .detail th:first-child{text-align:left}
@@ -1041,6 +1045,59 @@ const BK_CH = {101:[97,98],102:[99,100],97:[89,90],98:[93,94],99:[91,92],100:[95
   89:[74,77],90:[73,75],93:[83,84],94:[81,82],91:[76,78],92:[79,80],95:[86,88],96:[85,87]};
 const BK_RS = {"Round of 32":"R32","Round of 16":"R16","Quarter-final":"QF","Semi-final":"SF","Match for third place":"3rd","Final":"Final"};
 let BK_NUM = {}; // num -> match, rebuilt each render
+// num -> match, shared by the bracket render AND the max-points walk. Some feeds
+// (the live mirror) leave num null on the Final / third-place match — map by round.
+function buildBkNum(){
+  BK_NUM = {}; if(!DATA) return;
+  for(const m of DATA.matches){ if(m.num!=null) BK_NUM[m.num]=m; }
+  for(const m of DATA.matches){ if(m.group) continue;
+    if(m.round==="Final" && !BK_NUM[104]) BK_NUM[104]=m;
+    else if(m.round==="Match for third place" && !BK_NUM[103]) BK_NUM[103]=m; }
+}
+
+// ============================================================================
+// Max points still attainable — walk the (seeded) knockout bracket.
+// Banked points (group + advance + KO wins so far) are already counted by
+// computeScores; the ONLY points left to win are future KO match wins. With the
+// group stage over and the R32 seeded, the bracket is a fixed tree (BK_CH plus
+// the final at 104), so a manager's exact best case is a DP over that tree: at
+// each match, pick the winner that maximises THAT manager's points. It's
+// collision-aware — when two of a manager's own teams share a subtree only one
+// can advance past their meeting, so a naive per-team sum over-counts (it would
+// pay a manager for both teams reaching the final). Decided matches are locked
+// to their real result (0 points remain below them). The third-place match
+// (unscored) is excluded. Third place isn't in the tree so it never contributes.
+// ============================================================================
+const KO_TREE = {104:[101,102], ...BK_CH}; // full scored bracket incl. the final
+// {mw, ot} = max REMAINING points for `mgr` within subtree(num), given the team
+// advancing out of it is owned by mgr (mw) or by someone else (ot); -Infinity if
+// that outcome is impossible. value(match) is added only for an UNDECIDED win by
+// mgr (a banked win is already in computeScores, so it adds 0 more here).
+function maxKOsubtree(num, mgr){
+  const m = BK_NUM[num]; if(!m) return {mw:-Infinity, ot:0};
+  const kids = KO_TREE[num], V = KO_ROUNDS[m.round], wi = winnerIdx(m);
+  if(wi>=0){ // decided ⇒ whole subtree settled, nothing left; winner's owner is fixed
+    const wc = kids ? (bkWinner(num)||{}).code : (wi===0?bkSide(m.team1).code:bkSide(m.team2).code);
+    return (wc && OWNER[wc]===mgr) ? {mw:0, ot:-Infinity} : {mw:-Infinity, ot:0};
+  }
+  if(!kids){ // undecided R32 leaf ⇒ free choice of winner between its two teams
+    const a=bkSide(m.team1).code, b=bkSide(m.team2).code;
+    const mine  = (a&&OWNER[a]===mgr) || (b&&OWNER[b]===mgr);
+    const other = (!a||OWNER[a]!==mgr) || (!b||OWNER[b]!==mgr);
+    return {mw: mine?V:-Infinity, ot: other?0:-Infinity};
+  }
+  const L=maxKOsubtree(kids[0],mgr), R=maxKOsubtree(kids[1],mgr);
+  const loseL=Math.max(L.mw,L.ot), loseR=Math.max(R.mw,R.ot); // the beaten side keeps its sub-points
+  const mw=Math.max(L.mw+loseR, R.mw+loseL);                   // an mgr team wins this match (+V)
+  const ot=Math.max(L.ot+loseR, R.ot+loseL);                   // a non-mgr team wins this match
+  return {mw: isFinite(mw)?V+mw:-Infinity, ot};
+}
+// Most points `mgr` can still add if every remaining game breaks their way.
+function maxPointsLeft(mgr){
+  if(!DATA || !BK_NUM[104]) return 0;
+  const r = maxKOsubtree(104, mgr), best = Math.max(r.mw, r.ot);
+  return isFinite(best) ? best : 0;
+}
 
 // One bracket-fixture side -> {code, from, kind, viaLogic, raw}; code may be null if undecided.
 function bkSide(tok){
@@ -1105,11 +1162,7 @@ function bkNode(num, now, followed){
 function renderBracket(now){
   const host=document.getElementById("bracket"); if(!host) return;
   if(!DATA){ host.innerHTML=`<p class="small">Loading…</p>`; return; }
-  BK_NUM={}; for(const m of DATA.matches){ if(m.num!=null) BK_NUM[m.num]=m; }
-  // some feeds (the live mirror) leave num null on the Final / third-place match — map by round.
-  for(const m of DATA.matches){ if(m.group) continue;
-    if(m.round==="Final" && !BK_NUM[104]) BK_NUM[104]=m;
-    else if(m.round==="Match for third place" && !BK_NUM[103]) BK_NUM[103]=m; }
+  buildBkNum();
   if(!BK_NUM[104]||!BK_NUM[101]||!BK_NUM[102]){ host.innerHTML=`<p class="small">The bracket appears once the knockout fixtures are published in the feed.</p>`; return; }
   const followed=followedCodes();
   const champ=bkWinner(104), fk=kickoff(BK_NUM[104]), tk=BK_NUM[103]?kickoff(BK_NUM[103]):null;
@@ -1127,6 +1180,7 @@ function renderBracket(now){
 function render(){
   const now = new Date();
   applyESPN();
+  buildBkNum(); // bracket-walk (maxPointsLeft) + renderBracket both read BK_NUM
   const followed = followedCodes();
   const T = computeScores();
   const ms = DATA ? DATA.matches : [];
@@ -1218,8 +1272,9 @@ function render(){
   // --- topbar
   const totals = MANAGERS.map(mgr=>{
     const codes=ROSTERS[mgr.name]||[];
-    return {mgr,
-      pts:   codes.reduce((s,c)=>s+T[c].pts,0),
+    const pts = codes.reduce((s,c)=>s+T[c].pts,0);
+    const maxLeft = maxPointsLeft(mgr.name); // best-case remaining, walking the seeded bracket
+    return {mgr, pts, maxLeft, ceiling: pts+maxLeft,
       unconf:codes.reduce((s,c)=>s+T[c].unconf,0),
       preEV: codes.reduce((s,c)=>s+BY_CODE[c].preEV,0),
       proj:  codes.reduce((s,c)=>s+evFor(c),0)};
@@ -1240,10 +1295,25 @@ function render(){
     const codes=(ROSTERS[row.mgr.name]||[]).slice().sort((a,b)=>T[b].pts-T[a].pts || evFor(b)-evFor(a));
     const isYou=row.mgr.name===prefs.manager, open=expanded.has(row.mgr.name);
     const delta=row.proj-row.preEV;
+    // Best-case ceiling + race status (uses the bracket-walk max). "Ceiling" is
+    // banked + the most a manager can still win if every remaining game breaks
+    // their way; a rival's banked already above your ceiling means they can't be
+    // caught. Only rendered inside .detail, so it shows only when a row is opened.
+    const others = totals.filter(x=>x!==row);
+    const aheadForGood = others.filter(x=>x.pts > row.ceiling).sort((a,b)=>b.pts-a.pts);
+    const clinchedFirst = others.every(x=>x.ceiling < row.pts);
+    const maxLine = row.maxLeft>0
+      ? `Best case: <b>+${row.maxLeft}</b> if every remaining game breaks their way → ceiling <b>${row.ceiling}</b>.`
+      : `All teams eliminated — <b>${row.pts}</b> is final.`;
+    const status = clinchedFirst
+      ? ` <span class="st-win">🏆 Clinched 1st — no one else can reach ${row.pts}.</span>`
+      : aheadForGood.length
+        ? ` <span class="st-out">Out of the race for 1st — ${aheadForGood[0].mgr.short} already has ${aheadForGood[0].pts} banked, above this ceiling.</span>`
+        : "";
     return `<div class="mgr-row ${isYou?"you-row":""} ${open?"open":""}" data-mgr="${row.mgr.name}">
       <div class="top"><span>#${i+1} <span style="color:${row.mgr.color}">${isYou?"⭐ ":""}${row.mgr.name}</span></span><span class="pts">${row.pts}${uBadge(row.unconf)} <span style="font-size:.7rem;color:var(--muted)">proj ${row.proj.toFixed(1)} <span style="color:${delta>=0?"var(--green)":"var(--red)"}">(${delta>=0?"+":""}${delta.toFixed(1)} vs draft)</span></span></span></div>
       <div class="teams">${codes.map(c=>`${BY_CODE[c].flag} ${c} ${T[c].pts}`).join(" · ")}</div>
-      <div class="detail"><table>
+      <div class="detail"><div class="maxsum">${maxLine}${status}</div><table>
         <tr><th>Team</th><th>Grp pts</th><th>W-D-L</th><th>Adv</th><th>KO wins</th><th>Banked</th><th>Proj</th></tr>
         ${codes.map(c=>{const t=T[c];return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":t.clinchAdv?`<span class="unconf" title="Clinched a knockout berth — +4 unconfirmed until the bracket is seeded">+4</span>`:"—"}</td><td>${t.koWins.length?t.koWins.map(r=>r==="Final"?"F(+10)":"+5").join(" "):"—"}</td><td><b>${t.pts}</b></td><td style="color:var(--muted)">${evFor(c).toFixed(1)}</td></tr>`;}).join("")}
       </table></div>
