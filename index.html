@@ -1303,8 +1303,8 @@ function render(){
       <div class="top"><span>#${i+1} <span style="color:${row.mgr.color}">${isYou?"⭐ ":""}${row.mgr.name}</span></span><span class="pts">${row.pts}${uBadge(row.unconf)} <span style="font-size:.7rem;color:var(--muted)">proj ${row.proj.toFixed(1)} <span style="color:${delta>=0?"var(--green)":"var(--red)"}">(${delta>=0?"+":""}${delta.toFixed(1)} vs draft)</span></span></span></div>
       <div class="teams">${codes.map(c=>`${BY_CODE[c].flag} ${c} ${T[c].pts}`).join(" · ")}</div>
       <div class="detail"><div class="maxsum">${maxLine}</div><table>
-        <tr><th>Team</th><th>Grp pts</th><th>W-D-L</th><th>Adv</th><th>KO wins</th><th>Banked</th><th>Proj</th></tr>
-        ${codes.map(c=>{const t=T[c];return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":t.clinchAdv?`<span class="unconf" title="Clinched a knockout berth — +4 unconfirmed until the bracket is seeded">+4</span>`:"—"}</td><td>${t.koWins.length?t.koWins.map(r=>r==="Final"?"F(+10)":"+5").join(" "):"—"}</td><td><b>${t.pts}</b></td><td style="color:var(--muted)">${evFor(c).toFixed(1)}</td></tr>`;}).join("")}
+        <tr><th>Team</th><th>Grp pts</th><th>W-D-L</th><th>Adv</th><th>KO pts</th><th>Banked</th><th>Proj</th></tr>
+        ${codes.map(c=>{const t=T[c];return `<tr><td>${BY_CODE[c].flag} ${BY_CODE[c].name}${t.champion?" 🏆":""}</td><td>${t.gPts}</td><td>${t.gW}-${t.gD}-${t.gL}</td><td>${t.adv?"+4":t.clinchAdv?`<span class="unconf" title="Clinched a knockout berth — +4 unconfirmed until the bracket is seeded">+4</span>`:"—"}</td><td>${t.koWins.length?`<span title="Wins: ${t.koWins.join(", ")}">+${t.koWins.reduce((s,r)=>s+KO_ROUNDS[r],0)}</span>`:"—"}</td><td><b>${t.pts}</b></td><td style="color:var(--muted)">${evFor(c).toFixed(1)}</td></tr>`;}).join("")}
       </table></div>
     </div>`;
   }).join("");
