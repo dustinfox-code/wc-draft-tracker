@@ -528,12 +528,12 @@ function applyESPN(){
 // data/sofascore.json mapping each fixture to its match-page URL. Group games
 // match on both team codes + kickoff within a day; knockout games match on
 // kickoff time alone — it's unique per slot (no two knockout fixtures are within
-// 3.5h, and Sofascore's times match the feed exactly). CAVEAT: a placeholder
-// slot's URL (teams still TBD: "w98-w97") DIES when the draw resolves — slug
-// and customId are both derived from the two teams, so Sofascore mints new
-// ones and the old page 404s. Re-harvest after each knockout round resolves
-// (README "Updating the Sofascore links"). Best-effort — if the file is
-// absent/empty, scores just render without a link.
+// 3.5h, and Sofascore's times match the feed exactly). Undrawn slots are stored
+// as /event/{numeric id} URLs: a slot's slug/customId are minted anew when its
+// teams resolve (the old placeholder URL 404s), but the numeric event id is
+// stable and /event/{id} redirects to the canonical page — so links survive
+// each draw with no re-harvest. Best-effort — if the file is absent/empty,
+// scores just render without a link.
 // ============================================================================
 let SOFA = []; // [{c:[code,code], ts:epochMs, url}]
 async function loadSofascore(){

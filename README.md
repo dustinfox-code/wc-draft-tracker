@@ -104,11 +104,15 @@ same call the site makes itself — so Cloudflare lets it through.
 (`scripts/harvest-sofascore.mjs` is the same feed logic for plain Node — kept
 for reference, but plain Node gets 403'd, so use the Python script.)
 
-**Re-run after each knockout round resolves.** A *resolved* match's URL is
-stable, but a placeholder slot ("w98-w97") gets a **new slug and customId**
-the moment its real teams are drawn in — both are derived from the two teams —
-and the old placeholder URL 404s. (Learned the hard way 2026-07-06: every
-pre-harvested R16 placeholder link died once the R32 winners were known.)
+**Re-runs are rarely needed.** A *resolved* match's URL is stable, and undrawn
+knockout slots are stored as `https://www.sofascore.com/event/{id}` — the
+numeric event id survives the draw and Sofascore redirects it to the canonical
+match page, whatever it currently is. (The obvious alternative doesn't work: a
+placeholder slot's slug **and** customId are derived from the two teams, so
+both are minted anew when the draw resolves and the old placeholder URL 404s —
+learned the hard way 2026-07-06 when every pre-harvested R16 link died.)
+Re-run only if fixtures get added or rescheduled, or cosmetically to upgrade
+`/event/{id}` links to direct URLs after a draw.
 
 If it prints `⚠ unresolved teams`, add the shown name/`nameCode` to
 `NAME_TO_CODE` / `CODE_ALIAS` in the script and re-run.

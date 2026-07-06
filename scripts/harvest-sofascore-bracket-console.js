@@ -3,13 +3,14 @@
 //
 // Grabs the WHOLE tournament in one run, including knockout rounds whose teams
 // aren't decided yet (R16/QF/SF/Final). Those fixtures already exist on
-// Sofascore as placeholder slots ("w98-w97", "w75-canada") — but BEWARE: the
-// slug AND the customId are both derived from the two teams, so when a slot's
-// real teams resolve Sofascore mints a NEW slug + customId and the old
-// placeholder URL 404s (verified 2026-07-06: every pre-harvested R16
-// placeholder link died once the R32 winners were drawn in). Placeholder URLs
-// are only good until the draw resolves — RE-HARVEST AFTER EACH ROUND. A
-// resolved match's URL is stable.
+// Sofascore as placeholder slots ("w98-w97", "w75-canada") — but a slot's slug
+// AND customId are both derived from the two teams, so when its real teams
+// resolve Sofascore mints a NEW slug + customId and the old placeholder URL
+// 404s (verified 2026-07-06: every pre-harvested R16 placeholder link died
+// once the R32 winners were drawn in). So undrawn slots are emitted as
+// /event/{numeric id} instead — the numeric event id survives the draw (same
+// pre-created event) and /event/{id} redirects to the canonical match page
+// whatever it currently is. Resolved matches get their direct (stable) URL.
 //
 // HOW THE PAGE USES IT: index.html matches group games by team code + kickoff,
 // and knockout games by KICKOFF TIME (unique per slot — verified no two
@@ -72,17 +73,21 @@
   // Fold a Sofascore event object into byId. c = the resolved codes (0, 1 or 2 of
   // them); a placeholder slot just has fewer — kickoff time carries the match.
   const consider = e => {
-    if(!e || !e.customId || !e.slug || !e.startTimestamp) return;
+    if(!e || !e.id || !e.customId || !e.slug || !e.startTimestamp) return;
     const c1 = code(e.homeTeam), c2 = code(e.awayTeam);
     if(!c1 && !isPlaceholder(e.homeTeam?.name)) unresolved.add(`${e.homeTeam?.name} [${e.homeTeam?.nameCode}]`);
     if(!c2 && !isPlaceholder(e.awayTeam?.name)) unresolved.add(`${e.awayTeam?.name} [${e.awayTeam?.nameCode}]`);
+    const c = [c1, c2].filter(Boolean);
     const entry = {
-      c: [c1, c2].filter(Boolean),
+      c,
       ts: e.startTimestamp * 1000,
-      url: `https://www.sofascore.com/football/match/${e.slug}/${e.customId}`,
+      // Undrawn slot → /event/{id}: survives the draw. Resolved → direct URL.
+      url: c.length === 2
+        ? `https://www.sofascore.com/football/match/${e.slug}/${e.customId}`
+        : `https://www.sofascore.com/event/${e.id}`,
     };
-    const prev = byId.get(e.customId);
-    if(!prev || entry.c.length > prev.c.length) byId.set(e.customId, entry);
+    const prev = byId.get(e.id);
+    if(!prev || entry.c.length > prev.c.length) byId.set(e.id, entry);
   };
 
   // ---- A) season feed: group + already-resolved games ------------------------

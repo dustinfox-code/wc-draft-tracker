@@ -9,11 +9,17 @@
 #   pip install curl_cffi        (once)
 #   python3 scripts/harvest-sofascore.py
 #
-# WHEN TO RE-RUN — after each knockout round resolves. A placeholder slot
-# ("w98-w97") gets a NEW slug + customId the moment its real teams are known
-# (both are derived from the two teams), and the old placeholder URL 404s.
-# Verified 2026-07-06: the pre-harvested R16 placeholder links all died once
-# the R32 winners were drawn in. A *resolved* match's URL is stable.
+# URL STABILITY — a placeholder slot ("w98-w97") gets a NEW slug + customId
+# the moment its real teams are known (both are derived from the two teams),
+# and the old placeholder URL 404s — verified 2026-07-06 when the pre-harvested
+# R16 placeholder links all died. So undrawn slots are emitted as
+# https://www.sofascore.com/event/{numeric id} instead: the numeric event id is
+# the one identifier that survives the draw (the slot is the same pre-created
+# event), and /event/{id} 301s to the canonical match page whatever it
+# currently is. Resolved matches get their direct canonical URL (stable, no
+# redirect hop). Net effect: one run covers the tournament; re-run only if
+# fixtures are added/rescheduled, or cosmetically to upgrade /event/{id} links
+# to direct URLs after a draw.
 #
 # SOURCES (same as the browser-console scripts):
 #   /api/v1/unique-tournament/16/season/58210/events/{last,next}/{page}
@@ -82,17 +88,19 @@ def is_placeholder(n):
 by_id, unresolved = {}, set()
 
 def consider(e):
-    if not e or not e.get("customId") or not e.get("slug") or not e.get("startTimestamp"): return
+    if not e or not e.get("id") or not e.get("customId") or not e.get("slug") or not e.get("startTimestamp"): return
     c1, c2 = code(e.get("homeTeam")), code(e.get("awayTeam"))
     for c, t in ((c1, e.get("homeTeam")), (c2, e.get("awayTeam"))):
         if not c and t and not is_placeholder(t.get("name")):
             unresolved.add(f"{t.get('name')} [{t.get('nameCode')}]")
-    entry = {"c": [x for x in (c1, c2) if x],
-             "ts": e["startTimestamp"] * 1000,
-             "url": f"{BASE}/football/match/{e['slug']}/{e['customId']}"}
-    prev = by_id.get(e["customId"])
+    resolved = [x for x in (c1, c2) if x]
+    # Undrawn slot → /event/{id}: survives the draw. Resolved → direct URL.
+    url = (f"{BASE}/football/match/{e['slug']}/{e['customId']}" if len(resolved) == 2
+           else f"{BASE}/event/{e['id']}")
+    entry = {"c": resolved, "ts": e["startTimestamp"] * 1000, "url": url}
+    prev = by_id.get(e["id"])
     if not prev or len(entry["c"]) > len(prev["c"]):
-        by_id[e["customId"]] = entry
+        by_id[e["id"]] = entry
 
 # ---- A) season feed: group + already-resolved games ------------------------
 feed_count = 0
@@ -144,13 +152,12 @@ rescued = 0
 if OUT.exists():
     old = json.loads(OUT.read_text())
     for e in old.get("events", []):
-        cid = e["url"].rsplit("/", 1)[1]
-        if cid in by_id or len(e.get("c", [])) != 2 or is_placeholder_slug(e["url"]):
+        if len(e.get("c", [])) != 2 or is_placeholder_slug(e["url"]):
             continue
         dup = any(set(x["c"]) == set(e["c"]) and abs(x["ts"] - e["ts"]) < 36*3600000
                   for x in by_id.values() if len(x["c"]) == 2)
         if not dup:
-            by_id[cid] = e; rescued += 1
+            by_id[e["url"]] = e; rescued += 1
             print(f"rescued from previous file: {e['c']} {e['url']}")
 
 # ---- output -----------------------------------------------------------------
