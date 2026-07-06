@@ -3,16 +3,18 @@
 //
 // Grabs the WHOLE tournament in one run, including knockout rounds whose teams
 // aren't decided yet (R16/QF/SF/Final). Those fixtures already exist on
-// Sofascore as placeholder slots ("w98-w97", "w75-canada") with REAL, stable
-// customIds — a match URL resolves off the customId alone (the slug is
-// decorative), and customIds never change once assigned. So one run now covers
-// the rest of the tournament; no need to re-harvest after each draw.
+// Sofascore as placeholder slots ("w98-w97", "w75-canada") — but BEWARE: the
+// slug AND the customId are both derived from the two teams, so when a slot's
+// real teams resolve Sofascore mints a NEW slug + customId and the old
+// placeholder URL 404s (verified 2026-07-06: every pre-harvested R16
+// placeholder link died once the R32 winners were drawn in). Placeholder URLs
+// are only good until the draw resolves — RE-HARVEST AFTER EACH ROUND. A
+// resolved match's URL is stable.
 //
 // HOW THE PAGE USES IT: index.html matches group games by team code + kickoff,
 // and knockout games by KICKOFF TIME (unique per slot — verified no two
 // knockout fixtures are within 3.5h of each other, and Sofascore's times match
-// the feed exactly). So a placeholder slot harvested now links up the moment its
-// teams resolve, with no re-run.
+// the feed exactly).
 //
 // SOURCES (the per-date /scheduled-events/{date} endpoint was retired — 404):
 //   • group + already-resolved games: the season feed

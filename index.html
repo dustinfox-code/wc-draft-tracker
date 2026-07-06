@@ -524,14 +524,16 @@ function applyESPN(){
 // ============================================================================
 // Sofascore deep links — full live + post-match stats per game
 // Sofascore's API is Cloudflare-gated with no CORS, so the browser can't read
-// it; instead the harvest scripts (scripts/harvest-sofascore*.js) write
+// it; instead the harvest scripts (scripts/harvest-sofascore*) write
 // data/sofascore.json mapping each fixture to its match-page URL. Group games
 // match on both team codes + kickoff within a day; knockout games match on
 // kickoff time alone — it's unique per slot (no two knockout fixtures are within
-// 3.5h, and Sofascore's times match the feed exactly), so a pre-harvested
-// placeholder slot (teams still TBD: "w98-w97") links up the moment the draw
-// resolves, no re-harvest needed. Best-effort — if the file is absent/empty,
-// scores just render without a link.
+// 3.5h, and Sofascore's times match the feed exactly). CAVEAT: a placeholder
+// slot's URL (teams still TBD: "w98-w97") DIES when the draw resolves — slug
+// and customId are both derived from the two teams, so Sofascore mints new
+// ones and the old page 404s. Re-harvest after each knockout round resolves
+// (README "Updating the Sofascore links"). Best-effort — if the file is
+// absent/empty, scores just render without a link.
 // ============================================================================
 let SOFA = []; // [{c:[code,code], ts:epochMs, url}]
 async function loadSofascore(){

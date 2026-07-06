@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-30T19:24:04.250Z",
+  "generated": "2026-07-06T15:30:27.372Z",
   "count": 104,
   "events": [
     {
@@ -631,7 +631,7 @@
         "MEX",
         "ECU"
       ],
-      "ts": 1782867600000,
+      "ts": 1782871200000,
       "url": "https://www.sofascore.com/football/match/mexico-ecuador/hVbsGVb"
     },
     {
@@ -716,10 +716,11 @@
     },
     {
       "c": [
-        "PAR"
+        "PAR",
+        "FRA"
       ],
       "ts": 1783198800000,
-      "url": "https://www.sofascore.com/football/match/w77-paraguay/OVbsueWg"
+      "url": "https://www.sofascore.com/football/match/paraguay-france/GObsOVb"
     },
     {
       "c": [
@@ -730,34 +731,52 @@
       "url": "https://www.sofascore.com/football/match/brazil-norway/AObsYUb"
     },
     {
-      "c": [],
-      "ts": 1783296000000,
-      "url": "https://www.sofascore.com/football/match/w80-w79/leWgsoeWg"
+      "c": [
+        "MEX",
+        "ENG"
+      ],
+      "ts": 1783299600000,
+      "url": "https://www.sofascore.com/football/match/mexico-england/nUbsGVb"
     },
     {
-      "c": [],
+      "c": [
+        "POR",
+        "ESP"
+      ],
       "ts": 1783364400000,
-      "url": "https://www.sofascore.com/football/match/w84-w83/ZdWgsceWg"
+      "url": "https://www.sofascore.com/football/match/portugal-spain/YTbseUb"
     },
     {
-      "c": [],
+      "c": [
+        "USA",
+        "BEL"
+      ],
       "ts": 1783382400000,
-      "url": "https://www.sofascore.com/football/match/w82-w81/jeWgsneWg"
+      "url": "https://www.sofascore.com/football/match/usa-belgium/rUbszUb"
     },
     {
-      "c": [],
+      "c": [
+        "ARG",
+        "EGY"
+      ],
       "ts": 1783440000000,
-      "url": "https://www.sofascore.com/football/match/w88-w86/MdWgsPdWg"
+      "url": "https://www.sofascore.com/football/match/argentina-egypt/iVbsuWb"
     },
     {
-      "c": [],
+      "c": [
+        "SUI",
+        "COL"
+      ],
       "ts": 1783454400000,
-      "url": "https://www.sofascore.com/football/match/w87-w85/YdWgsaeWg"
+      "url": "https://www.sofascore.com/football/match/colombia-switzerland/ZTbsvWb"
     },
     {
-      "c": [],
+      "c": [
+        "FRA",
+        "MAR"
+      ],
       "ts": 1783627200000,
-      "url": "https://www.sofascore.com/football/match/w90-w89/ieWgsmeWg"
+      "url": "https://www.sofascore.com/football/match/morocco-france/GObsDVb"
     },
     {
       "c": [],
@@ -765,9 +784,12 @@
       "url": "https://www.sofascore.com/football/match/w94-w93/feWgsgeWg"
     },
     {
-      "c": [],
+      "c": [
+        "NOR",
+        "ENG"
+      ],
       "ts": 1783803600000,
-      "url": "https://www.sofascore.com/football/match/w92-w91/yeWgszeWg"
+      "url": "https://www.sofascore.com/football/match/england-norway/AObsnUb"
     },
     {
       "c": [],

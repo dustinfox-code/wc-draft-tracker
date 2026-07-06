@@ -8,9 +8,10 @@
 // WHY a script instead of fetching from the page: Sofascore's API sits behind
 // Cloudflare with no CORS, so a browser on GitHub Pages can't read it. Run this
 // from your own machine — a residential IP Cloudflare trusts — and commit the
-// JSON. A match's customId is stable once assigned, so you only re-run as new
-// fixtures get scheduled: once now for the group stage, then after each
-// knockout round's draw resolves (~6 more times across the tournament).
+// JSON. A resolved match's URL is stable, but a placeholder knockout slot
+// ("w98-w97") gets a NEW slug + customId when its teams are drawn in (both are
+// team-derived) and the old URL 404s — so re-run after each knockout round's
+// draw resolves.
 //
 // NOTE: Sofascore blocks on TLS fingerprint, so plain Node fetch gets 403'd
 // even from a residential IP. This CLI version only works behind a browser-
